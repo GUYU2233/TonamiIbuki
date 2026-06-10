@@ -30,6 +30,16 @@ def _normalize(level: str) -> str:
         "storage": "medium",
         "security": "critical",
         "kubernetes": "high",
+        "container": "high",
+        "system": "medium",
+        "nginx": "medium",
+        "gateway": "medium",
+        "api": "medium",
+        "redis": "high",
+        "mysql": "high",
+        "dns": "medium",
+        "ssl": "high",
+        "docker": "high",
     }
     return aliases.get(level, "unknown")
 

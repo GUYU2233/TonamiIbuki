@@ -159,11 +159,28 @@ class DiagnosisService:
         return saved
 
     def _infer_root_cause(self, session: DiagnosisSession) -> str:
+        # Try to extract probable_causes from diagnosis events
         for event in session.events:
-            if event.step == "diagnosis":
+            if event.step in ("diagnosis", "monitor"):
                 causes = event.payload.get("probable_causes") or []
                 if causes:
                     return "；".join(causes[:3])
+        # Fallback: keyword-based inference from alert content
+        alert_text = f"{session.alert.title} {session.alert.description}".lower()
+        if "502" in alert_text or "bad gateway" in alert_text:
+            return "上游服务异常或不可达，可能原因：后端服务进程崩溃、端口未监听、连接池耗尽"
+        if "磁盘" in alert_text or "disk" in alert_text or "空间" in alert_text:
+            return "日志文件或临时文件未及时清理导致磁盘空间耗尽，需检查日志轮转策略和文件清理机制"
+        if "crashloop" in alert_text or "pod" in alert_text:
+            return "容器启动失败，可能原因：环境变量缺失、镜像拉取失败、健康检查配置不当、资源限制过低"
+        if "慢查询" in alert_text or "slow" in alert_text or "mysql" in alert_text:
+            return "SQL 查询性能下降，可能原因：缺少索引、表锁竞争、查询计划变更、连接池配置不合理"
+        if "redis" in alert_text or "oom" in alert_text or "内存" in alert_text:
+            return "Redis 内存使用超出限制，可能原因：key 未设置过期时间、数据量增长超出预期、内存碎片率高"
+        if "ssl" in alert_text or "证书" in alert_text:
+            return "SSL/TLS 证书即将过期或已过期，需立即续期并更新证书配置"
+        if "超时" in alert_text or "timeout" in alert_text or "延迟" in alert_text:
+            return "接口响应时间异常增长，可能原因：下游服务性能瓶颈、网络延迟、数据库连接池耗尽"
         return "基于诊断证据链推断，需人工复核最终根因。"
 
     def metrics_snapshot(self) -> dict:
