@@ -1,4 +1,5 @@
 """Reranker service – re-ranks a candidate list to improve retrieval precision.
+from __future__ import annotations
 
 Supports mock (BM25-score-based) and cross-encoder placeholders.
 """

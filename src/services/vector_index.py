@@ -1,4 +1,5 @@
 """ChromaDB-backed vector index for persistent document storage.
+from __future__ import annotations
 
 Provides the same interface as the old JSONL adapter but stores embeddings
 and metadata in a persistent ChromaDB collection on disk.

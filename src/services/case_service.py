@@ -1,3 +1,4 @@
+from __future__ import annotations
 from src.models import CaseRecord
 from src.services.sqlite_store import sqlite_store
 

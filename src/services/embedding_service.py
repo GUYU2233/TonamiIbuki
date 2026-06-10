@@ -1,4 +1,5 @@
 """Embedding service – generates dense vector representations for documents and queries.
+from __future__ import annotations
 
 Supports mock (deterministic hash-based), OpenAI-compatible, and Ollama backends.
 """

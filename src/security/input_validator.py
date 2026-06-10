@@ -1,4 +1,5 @@
 """Input validation and sanitization utilities."""
+from __future__ import annotations
 
 import re
 import html

@@ -1,6 +1,6 @@
 """API routes — TonamiIbuki AIOps backend."""
-
 from __future__ import annotations
+
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import JSONResponse

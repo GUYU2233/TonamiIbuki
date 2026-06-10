@@ -1,4 +1,5 @@
 """Evaluation service for RAG pipeline metrics."""
+from __future__ import annotations
 
 import time
 import json

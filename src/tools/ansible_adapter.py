@@ -1,4 +1,5 @@
 """Ansible adapter — real ansible execution with simulated fallback."""
+from __future__ import annotations
 
 import json
 import subprocess

@@ -1,4 +1,5 @@
 """Tool adapters package — real + simulated execution backends."""
+from __future__ import annotations
 
 from src.tools.kubectl_adapter import KubectlAdapter
 from src.tools.ansible_adapter import AnsibleAdapter

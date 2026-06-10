@@ -1,4 +1,5 @@
 """LangGraph-based multi-agent diagnosis engine.
+from __future__ import annotations
 
 Replaces the sequential simulation in diagnosis_service.py with a real
 StateGraph that supports:
@@ -7,16 +8,23 @@ StateGraph that supports:
 - Streaming events
 """
 
-from __future__ import annotations
 
 import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Annotated, TypedDict
 
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
+try:
+    from langgraph.checkpoint.memory import MemorySaver
+    from langgraph.graph import StateGraph, END
+    from langgraph.graph.message import add_messages
+    _LANGGRAPH_AVAILABLE = True
+except ImportError:
+    _LANGGRAPH_AVAILABLE = False
+    MemorySaver = None  # type: ignore
+    StateGraph = None  # type: ignore
+    END = None  # type: ignore
+    add_messages = lambda *args, **kwargs: []  # type: ignore
 
 from src.models import (
     AlertRequest,
@@ -329,15 +337,22 @@ class LangGraphDiagnosisEngine:
     """Wraps the LangGraph StateGraph with compile + streaming + checkpointer."""
 
     def __init__(self) -> None:
-        self._graph = build_diagnosis_graph()
-        self._checkpointer = MemorySaver()
-        self._compiled = self._graph.compile(checkpointer=self._checkpointer)
+        if not _LANGGRAPH_AVAILABLE:
+            self._graph = None
+            self._checkpointer = None
+            self._compiled = None
+        else:
+            self._graph = build_diagnosis_graph()
+            self._checkpointer = MemorySaver()
+            self._compiled = self._graph.compile(checkpointer=self._checkpointer)
 
     @property
     def compiled(self):
         return self._compiled
 
     def status(self) -> dict:
+        if not _LANGGRAPH_AVAILABLE:
+            return {"ready": False, "backend": "langgraph (unavailable)", "nodes": []}
         return {"ready": True, "backend": "langgraph", "nodes": list(self._graph.nodes.keys())}
 
     async def arun(self, request: DiagnosisRequest) -> dict:
@@ -350,6 +365,14 @@ class LangGraphDiagnosisEngine:
 
     async def arun_from_parts(self, session_id: str, alert, auto_execute: bool) -> dict:
         """Run the graph with explicit parameters (avoids Pydantic field issues)."""
+        if not _LANGGRAPH_AVAILABLE:
+            return {
+                "session_id": session_id,
+                "state": "completed",
+                "report": "LangGraph is not installed. Please install langgraph>=0.2.0.",
+                "events": [],
+            }
+        # ... rest of method
         initial_state: DiagnosisState = {
             "session_id": session_id,
             "alert_json": alert.model_dump_json() if hasattr(alert, 'model_dump_json') else alert.model_dump_json(),

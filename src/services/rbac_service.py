@@ -1,10 +1,10 @@
 """RBAC service – Role-Based Access Control for TonamiIbuki.
+from __future__ import annotations
 
 Manages users, roles, and permissions. Provides middleware integration points
 for API token authentication and role-based authorization.
 """
 
-from __future__ import annotations
 
 import hashlib
 import secrets
