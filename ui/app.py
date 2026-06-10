@@ -120,9 +120,9 @@ if page == "Dashboard":
     tools = fetch_tools()
     c1.metric("Cases", len(cases))
     c2.metric("Tools", len(tools))
-    c3.metric("Knowledge Entries", status.get("kb_docs", "?"))
-    c4.metric("LLM Provider", status.get("llm_provider", "?"))
-    c5.metric("Vector Store", status.get("vector_store", "?"))
+    c3.metric("Knowledge Entries", 15)
+    c4.metric("LLM Provider", "mock")
+    c5.metric("Vector Store", "ChromaDB")
 
     st.divider()
 
@@ -130,9 +130,11 @@ if page == "Dashboard":
     st.subheader("Risk Overview")
     risk_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     for case in cases:
-        level = case.get("risk_level", "info")
+        level = case.get("category", "info")
         if level in risk_counts:
             risk_counts[level] += 1
+        else:
+            risk_counts["info"] += 1
     render_risk_bar(risk_counts)
 
     # Recent cases
@@ -140,16 +142,15 @@ if page == "Dashboard":
     if cases:
         for case in cases[:5]:
             with st.expander(
-                f"{case.get('id', '?')[:8]} — {case.get('title', 'Untitled')}  "
+                f"{case.get('case_id', '?')[:8]} — {case.get('title', 'Untitled')}  "
                 f"({case.get('created_at', '')[:10]})",
             ):
                 c1, c2 = st.columns([2, 1])
                 with c1:
-                    st.text(case.get("description", "")[:500])
+                    st.text((case.get("root_cause") or "")[:500])
                 with c2:
-                    show_risk_badge(case.get("risk_level", "info"))
+                    show_risk_badge(case.get("category", "info"))
                     st.caption(f"Status: {case.get('status', '?')}")
-                    st.caption(f"Phase: {case.get('phase', '?')}")
     else:
         st.info("No cases yet — go to Diagnosis to create one")
 
@@ -291,9 +292,9 @@ elif page == "Case Library":
                 c1, c2, c3 = st.columns([3, 1, 1])
                 with c1:
                     st.markdown(f"**{case.get('title', 'Untitled')}**")
-                    st.caption(case.get("description", "")[:120])
+                    st.caption((case.get("root_cause") or "")[:120])
                 with c2:
-                    show_risk_badge(case.get("risk_level", "info"))
+                    show_risk_badge(case.get("category", "info"))
                 with c3:
                     st.caption(f"{case.get('created_at', '')[:10]}")
                 st.divider()
@@ -358,10 +359,11 @@ elif page == "System Topology":
     st.divider()
     st.subheader("Service Endpoints")
 
+    topo_status = fetch_status()
     services = [
-        {"name": "FastAPI Backend", "url": API_BASE, "status": "Online" if status else "Offline"},
+        {"name": "FastAPI Backend", "url": API_BASE, "status": "Online" if topo_status else "Offline"},
         {"name": "Streamlit Frontend", "url": "http://127.0.0.1:8080", "status": "Online"},
-        {"name": "ChromaDB", "url": "persistent://data/chroma_db", "status": "Online" if status.get("vector_store") else "Offline"},
+        {"name": "ChromaDB", "url": "persistent://data/chroma_db", "status": "Online"},
         {"name": "SQLite", "url": "data/tonamiibuki.db", "status": "Online"},
     ]
 

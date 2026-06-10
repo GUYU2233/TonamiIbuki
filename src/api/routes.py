@@ -1,6 +1,7 @@
 """API routes — TonamiIbuki AIOps backend."""
 from __future__ import annotations
 
+import asyncio
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
@@ -67,11 +68,11 @@ async def health():
 @router.post("/diagnose")
 async def diagnose(req: DiagnosisRequest):
     audit = _svc("audit")
-    audit.write("system", "diagnosis_start", req.title)
+    audit.write("system", "diagnosis_start", req.alert.title)
     try:
-        result = await _svc("diagnosis").diagnose(req)
-        audit.write("system", "diagnosis_complete", result.id)
-        return result
+        result = await _svc("diagnosis").run_sync(req)
+        audit.write("system", "diagnosis_complete", result.session_id)
+        return result.model_dump(mode="json")
     except Exception as e:
         audit.write("system", "diagnosis_error", str(e))
         raise HTTPException(status_code=500, detail=str(e))
