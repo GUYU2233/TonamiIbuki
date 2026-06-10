@@ -1,426 +1,428 @@
-"""TonamiIbuki 企业 IT 运维智能体系统 – Streamlit 前端."""
+"""TonamiIbuki — 企业 IT 运维 AIOps 智能体前端 (Streamlit)."""
 
-import json
-from datetime import datetime
-
-import requests
 import streamlit as st
+import requests
+import json
+import time
+from datetime import datetime, timezone
 
+st.set_page_config(
+    page_title="TonamiIbuki · AIOps",
+    page_icon="ui/icon.png",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# --- Component imports ---
 from ui.components import (
+    render_topology,
     render_evidence_timeline,
+    render_evidence_summary,
+    show_risk_badge,
+    render_risk_bar,
     render_phase_indicator,
-    render_risk_badge,
+    render_phase_stepper,
     render_tool_card,
-    render_topology_graph,
+    render_tool_grid,
 )
 
-st.set_page_config(page_title="TonamiIbuki企业 IT 运维智能体系统", layout="wide")
-st.title("TonamiIbuki企业 IT 运维智能体系统")
-
-API_BASE = st.sidebar.text_input("API 地址", "http://127.0.0.1:8000")
-API_TOKEN = st.sidebar.text_input("API Token", "", type="password")
-
-
-def headers() -> dict[str, str]:
-    return {"X-API-Token": API_TOKEN} if API_TOKEN else {}
-
-
-def api_get(path: str, **params):
-    return requests.get(f"{API_BASE}{path}", params=params, headers=headers(), timeout=20)
-
-
-def api_post(path: str, payload: dict | None = None):
-    return requests.post(f"{API_BASE}{path}", json=payload or {}, headers=headers(), timeout=60)
+# --- Constants ---
+API_BASE = "http://127.0.0.1:8000"
 
 
 # ---------------------------------------------------------------------------
-# Dashboard runtime fragment
+# helpers
 # ---------------------------------------------------------------------------
-
-def render_runtime_status() -> None:
-    health = api_get("/health").json()
-    metrics = api_get("/api/monitor/metrics").json()
-    sessions = api_get("/api/diagnosis/sessions").json()
-    cases = api_get("/api/cases").json()
-    waiting = [item for item in sessions if item["state"] == "waiting_approval"]
-    st.caption(f"运行态势数据最后刷新：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("服务状态", health["status"])
-    col2.metric("CPU", f"{metrics['cpu_usage']}%")
-    col3.metric("P95 延迟", f"{metrics['p95_latency_ms']} ms")
-    col4.metric("待审批", len(waiting))
-    col5.metric("案例数量", len(cases))
-    st.markdown("### 最近诊断")
-    st.dataframe(
-        [
-            {
-                "session_id": item["session_id"],
-                "state": item["state"],
-                "alert": item["alert"]["title"],
-                "updated_at": item["updated_at"],
-            }
-            for item in sessions[:10]
-        ],
-        use_container_width=True,
-    )
+def _api_get(path: str) -> dict | None:
+    try:
+        r = requests.get(f"{API_BASE}{path}", timeout=10)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
 
 
-@st.fragment(run_every="5s")
-def render_runtime_status_5s() -> None:
-    render_runtime_status()
+def _api_post(path: str, payload: dict) -> dict | None:
+    try:
+        r = requests.post(f"{API_BASE}{path}", json=payload, timeout=30)
+        if r.status_code == 200:
+            return r.json()
+        st.error(f"API 错误 ({r.status_code}): {r.text[:300]}")
+    except Exception as e:
+        st.error(f"连接后端失败: {e}")
+    return None
 
 
-@st.fragment(run_every="10s")
-def render_runtime_status_10s() -> None:
-    render_runtime_status()
+@st.cache_data(ttl=10)
+def fetch_status() -> dict:
+    return _api_get("/health") or {}
 
 
-@st.fragment(run_every="30s")
-def render_runtime_status_30s() -> None:
-    render_runtime_status()
+def fetch_tools() -> list[dict]:
+    data = _api_get("/api/tools")
+    if isinstance(data, dict):
+        return data.get("tools", [])
+    return []
 
 
-def render_runtime_status_panel(auto_refresh: bool, refresh_interval: int) -> None:
-    if not auto_refresh:
-        render_runtime_status()
-    elif refresh_interval <= 5:
-        render_runtime_status_5s()
-    elif refresh_interval <= 10:
-        render_runtime_status_10s()
+def fetch_cases(limit: int = 20) -> list[dict]:
+    data = _api_get(f"/api/cases?limit={limit}")
+    if isinstance(data, dict):
+        return data.get("cases", [])
+    return []
+
+
+def fetch_users() -> list[dict]:
+    data = _api_get("/api/rbac/users")
+    if isinstance(data, dict):
+        return data.get("users", [])
+    return []
+
+
+# ---------------------------------------------------------------------------
+# sidebar
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    st.image("ui/icon.png", width=80)
+    st.title("TonamiIbuki")
+    st.caption("企业 IT 运维 AIOps 智能体")
+
+    status = fetch_status()
+    if status:
+        st.success(f"✅ 后端在线 · v{status.get('version', '?')}")
     else:
-        render_runtime_status_30s()
+        st.error("❌ 后端离线")
 
+    st.divider()
 
-# ---------------------------------------------------------------------------
-# Page routing
-# ---------------------------------------------------------------------------
-
-page = st.sidebar.radio(
-    "功能",
-    ["驾驶舱", "告警诊断", "审批队列", "工单处理", "知识库", "LLM与Prompt", "案例库", "安全策略", "审计日志", "用户管理"],
-)
-
-if page == "驾驶舱":
-    auto_refresh = st.sidebar.checkbox("运行态势数据自动刷新", True)
-    refresh_interval = st.sidebar.select_slider("运行态势刷新档位", options=[5, 10, 30], value=5)
-else:
-    auto_refresh = False
-    refresh_interval = 5
-
-# =========================================================================
-# 驾驶舱
-# =========================================================================
-if page == "驾驶舱":
-    st.subheader("系统运行态势")
-    st.caption(
-        f"仅运行态势数据局部刷新；自动刷新：{'开启' if auto_refresh else '关闭'}；"
-        f"当前间隔档位：{'5s' if refresh_interval <= 5 else '10s' if refresh_interval <= 10 else '30s'}"
+    page = st.radio(
+        "导航",
+        [
+            "🏠 总览仪表板",
+            "🔧 诊断中心",
+            "📋 案例库",
+            "🛠️ 工具管理",
+            "📊 系统拓扑",
+            "👥 用户管理",
+        ],
     )
-    render_runtime_status_panel(auto_refresh, refresh_interval)
-    st.markdown("### 业务拓扑")
-    topology = api_get("/api/topology").json()
-    render_topology_graph(topology["nodes"], topology["edges"])
-    st.markdown("### 系统自检")
-    self_check = api_get("/api/system/self-check").json()
-    st.json(self_check)
 
-# =========================================================================
-# 告警诊断
-# =========================================================================
-elif page == "告警诊断":
-    st.subheader("多智能体诊断演示")
-    with st.form("alert"):
-        title = st.text_input("告警标题", "订单服务 ERROR-DB-104 连接池耗尽")
-        host = st.text_input("主机/集群", "prod-app-01")
-        service = st.text_input("服务", "order-service")
-        severity = st.selectbox("级别", ["warning", "critical", "info"], index=1)
-        description = st.text_area("描述", "接口超时升高，日志出现 ERROR-DB-104 timeout acquiring connection")
-        auto_execute = st.checkbox("自动执行低风险动作，高风险进入审批", True)
-        submitted = st.form_submit_button("启动完整诊断")
-    if submitted:
-        payload = {
-            "alert": {
+    st.divider()
+    st.caption(f"© 2024 TonamiIbuki · {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+
+# ---------------------------------------------------------------------------
+# Page: 总览仪表板
+# ---------------------------------------------------------------------------
+if page == "🏠 总览仪表板":
+    st.title("🏠 总览仪表板")
+
+    # Metrics row
+    c1, c2, c3, c4, c5 = st.columns(5)
+    cases = fetch_cases()
+    tools = fetch_tools()
+    c1.metric("📋 案例总数", len(cases))
+    c2.metric("🛠️ 工具数", len(tools))
+    c3.metric("📚 知识条目", status.get("kb_docs", "?"))
+    c4.metric("⚙️ LLM", status.get("llm_provider", "?"))
+    c5.metric("📦 向量存储", status.get("vector_store", "?"))
+
+    st.divider()
+
+    # Risk summary
+    st.subheader("📊 风险概览")
+    risk_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    for case in cases:
+        level = case.get("risk_level", "info")
+        if level in risk_counts:
+            risk_counts[level] += 1
+    render_risk_bar(risk_counts)
+
+    # Recent cases
+    st.subheader("📋 最近案例")
+    if cases:
+        for case in cases[:5]:
+            with st.expander(
+                f"{case.get('id', '?')[:8]} — {case.get('title', '无标题')}  "
+                f"({case.get('created_at', '')[:10]})",
+            ):
+                c1, c2 = st.columns([2, 1])
+                with c1:
+                    st.text(case.get("description", "")[:500])
+                with c2:
+                    show_risk_badge(case.get("risk_level", "info"))
+                    st.caption(f"状态: {case.get('status', '?')}")
+                    st.caption(f"阶段: {case.get('phase', '?')}")
+    else:
+        st.info("暂无案例 — 前往「诊断中心」创建第一个诊断")
+
+    # Phase indicator demo
+    st.divider()
+    st.subheader("⏳ 系统阶段")
+    render_phase_indicator("ANALYSIS")
+
+# ---------------------------------------------------------------------------
+# Page: 诊断中心
+# ---------------------------------------------------------------------------
+elif page == "🔧 诊断中心":
+    st.title("🔧 诊断中心")
+
+    # Input form
+    with st.form("diagnosis_form"):
+        title = st.text_input("标题", placeholder="例如：生产环境 Nginx 502 错误")
+        description = st.text_area(
+            "故障描述",
+            placeholder="请详细描述故障现象、影响范围、发生时间等...",
+            height=120,
+        )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            severity = st.selectbox("严重程度", ["low", "medium", "high", "critical"], index=1)
+        with c2:
+            env = st.selectbox("环境", ["production", "staging", "development"], index=0)
+        with c3:
+            use_rag = st.checkbox("启用 RAG 检索", value=True)
+
+        submitted = st.form_submit_button("🚀 开始诊断", type="primary", use_container_width=True)
+
+    if submitted and title and description:
+        with st.spinner("正在诊断..."):
+            result = _api_post("/api/diagnose", {
                 "title": title,
-                "host": host,
-                "service": service,
-                "severity": severity,
                 "description": description,
-            },
-            "auto_execute": auto_execute,
-        }
-        session = api_post("/api/diagnosis/run-sync", payload).json()
-        st.session_state["last_session_id"] = session["session_id"]
-        st.success(f"诊断会话已创建：{session['session_id']}，状态：{session['state']}")
+                "severity": severity,
+                "environment": env,
+                "use_rag": use_rag,
+            })
 
-        # Phase indicator
-        render_phase_indicator()
+        if result:
+            st.success("诊断完成！")
 
-        st.markdown("### 阶段事件")
-        render_evidence_timeline(session["events"])
+            # Phase indicator
+            phase = result.get("phase", "ANALYSIS")
+            render_phase_indicator(phase)
 
-        # Evidence chain topology
-        evidence = api_get(f"/api/diagnosis/{session['session_id']}/evidence").json()
-        st.markdown("### 证据链")
-        render_topology_graph(evidence["nodes"], evidence["edges"])
+            st.divider()
 
-        # Report
-        report = api_get(f"/api/diagnosis/{session['session_id']}/report").json()["report"]
-        col_report, col_case = st.columns([1, 1])
-        col_report.download_button(
-            "下载诊断报告",
-            report,
-            file_name=f"diagnosis-{session['session_id']}.md",
-        )
-        if col_case.button("沉淀为案例", key=f"case-{session['session_id']}"):
-            st.json(api_post(f"/api/diagnosis/{session['session_id']}/case").json())
-        st.markdown(report)
+            # Root cause
+            st.subheader("🔍 根因分析")
+            root_cause = result.get("root_cause", {})
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.markdown(root_cause.get("summary", "无"))
+            with c2:
+                show_risk_badge(root_cause.get("risk_level", severity))
 
-# =========================================================================
-# 审批队列
-# =========================================================================
-elif page == "审批队列":
-    st.subheader("HITL 高风险操作审批")
-    sessions = api_get("/api/diagnosis/sessions").json()
-    waiting = [item for item in sessions if item["state"] == "waiting_approval"]
-    if not waiting:
-        st.success("当前没有待审批操作。")
-    for session in waiting:
-        st.markdown(f"### {session['alert']['title']}")
-        tool = session.get("pending_tool", {})
-        if tool:
-            render_tool_card(tool)
-        else:
-            st.code(json.dumps(session["pending_tool"], ensure_ascii=False, indent=2))
-        comment = st.text_input("审批意见", key=f"comment-{session['session_id']}")
-        col1, col2 = st.columns(2)
-        if col1.button("批准", key=f"approve-{session['session_id']}"):
-            result = api_post(
-                f"/api/diagnosis/{session['session_id']}/approve",
-                {"approved": True, "operator": "admin", "comment": comment},
-            ).json()
-            st.success("已批准并执行")
-            st.markdown(result.get("report", ""))
-        if col2.button("拒绝", key=f"reject-{session['session_id']}"):
-            st.json(
-                api_post(
-                    f"/api/diagnosis/{session['session_id']}/approve",
-                    {"approved": False, "operator": "admin", "comment": comment},
-                ).json()
-            )
+            # Evidence timeline
+            st.subheader("📋 证据时间线")
+            evidence = result.get("evidence", [])
+            render_evidence_summary(evidence)
+            render_evidence_timeline(evidence, max_items=15)
 
-# =========================================================================
-# 工单处理
-# =========================================================================
-elif page == "工单处理":
-    st.subheader("ITSM 工单智能处理")
-    with st.form("ticket"):
-        title = st.text_input("工单标题", "业务系统访问超时")
-        requester = st.text_input("申请人", "ops-user")
-        priority = st.selectbox("优先级", ["P1", "P2", "P3", "P4"], index=2)
-        description = st.text_area("工单描述", "用户反馈订单接口响应慢并偶发 timeout。")
-        submitted = st.form_submit_button("分析工单")
-    if submitted:
-        data = api_post(
-            "/api/ticket/process",
-            {"title": title, "requester": requester, "priority": priority, "description": description},
-        ).json()
-        st.json(data)
+            # RAG results
+            rag_results = result.get("rag_results", [])
+            if rag_results:
+                st.subheader("📚 知识库匹配")
+                for doc in rag_results[:5]:
+                    with st.expander(f"📄 {doc.get('title', '?')} (score: {doc.get('score', 0):.2f})"):
+                        st.text(doc.get("content", "")[:500])
 
-# =========================================================================
-# 知识库
-# =========================================================================
-elif page == "知识库":
-    tab_query, tab_import, tab_bulk, tab_eval = st.tabs(["检索问答", "导入手册", "批量导入", "RAG评测"])
-    with tab_query:
-        query = st.text_input("问题", "ERROR-DB-104 如何处理？")
-        if st.button("检索"):
-            data = api_post("/api/rag/query", {"query": query, "top_k": 5}).json()
-            st.markdown(data["answer"])
-            for doc in data["citations"]:
-                st.caption(f"{doc['title']} · {doc['source']} · score={doc['score']}")
-                st.write(doc["content"])
-    with tab_import:
-        with st.form("kb-import"):
-            title = st.text_input("标题")
-            source = st.text_input("来源", "manual")
-            tags = st.text_input("标签，逗号分隔")
-            content = st.text_area("内容", height=200)
-            submitted = st.form_submit_button("导入并重建索引")
-        if submitted:
-            payload = {
-                "title": title,
-                "source": source,
-                "tags": [tag.strip() for tag in tags.split(",") if tag.strip()],
-                "content": content,
-            }
-            st.json(api_post("/api/rag/import", payload).json())
-    with tab_bulk:
-        directory = st.text_input("文档目录", "data/knowledge")
-        patterns = st.text_input("文件模式", "*.md,*.txt,*.log,*.conf")
-        if st.button("批量导入并分块"):
-            st.json(
-                api_post(
-                    "/api/rag/bulk-import",
-                    {
-                        "directory": directory,
-                        "include_patterns": [p.strip() for p in patterns.split(",") if p.strip()],
-                    },
-                ).json()
-            )
-    with tab_eval:
-        st.info("使用内置评测集验证 Top-K 命中率，也可通过 API 传入自定义评测项。")
-        if st.button("运行默认 RAG 评测"):
-            eval_items = [
-                {"query": "ERROR-DB-104 连接池耗尽如何处理", "expected_doc_ids": ["kb-db-104"]},
-                {"query": "Pod CrashLoopBackOff 怎么排查", "expected_doc_ids": ["kb-k8s-crashloop"]},
-                {"query": "磁盘使用率超过 90% 日志清理", "expected_doc_ids": ["kb-disk-90"]},
-            ]
-            st.json(api_post("/api/rag/evaluate?top_k=5", eval_items).json())
+            # Tool executions
+            tool_runs = result.get("tool_runs", [])
+            if tool_runs:
+                st.subheader("⚡ 工具执行记录")
+                for tr in tool_runs:
+                    render_tool_card(
+                        tool_name=tr.get("tool_name", "unknown"),
+                        status=tr.get("status", "pending"),
+                        description=tr.get("description", ""),
+                        risk_level=tr.get("risk_level", "info"),
+                        output=tr.get("output", ""),
+                        duration_ms=tr.get("duration_ms"),
+                        params=tr.get("params"),
+                    )
 
-# =========================================================================
-# LLM与Prompt
-# =========================================================================
-elif page == "LLM与Prompt":
-    st.subheader("LLM Provider 与 Prompt 模板")
-    prompts = api_get("/api/prompts").json()
-    selected = st.selectbox("Prompt 模板", prompts)
-    if selected:
-        prompt_content = api_get(f"/api/prompts/{selected}").json()["content"]
-        st.text_area("系统 Prompt", prompt_content, height=180)
-    user_prompt = st.text_area("用户输入", "请分析 ERROR-DB-104 连接池耗尽告警并给出处置建议。")
-    if st.button("调用 LLM"):
-        st.json(
-            api_post(
-                "/api/llm/chat",
-                {
-                    "system": prompt_content if selected else "你是企业 IT 运维智能体。",
-                    "prompt": user_prompt,
-                },
-            ).json()
-        )
+            # Fix plan
+            st.subheader("📋 修复方案")
+            fix_plan = result.get("fix_plan", {})
+            steps = fix_plan.get("steps", [])
+            if steps:
+                for i, step in enumerate(steps, 1):
+                    st.markdown(f"{i}. {step}")
+            else:
+                st.text(fix_plan.get("summary", "暂无修复方案"))
 
-# =========================================================================
-# 案例库
-# =========================================================================
-elif page == "案例库":
-    tab_list, tab_add = st.tabs(["案例列表", "新增案例"])
-    with tab_list:
-        for case in api_get("/api/cases").json():
-            st.markdown(f"### {case['title']}")
-            st.write(case["root_cause"])
-            st.success(case["resolution"])
-    with tab_add:
-        with st.form("case-add"):
-            title = st.text_input("案例标题")
-            category = st.text_input("分类", "incident")
-            root_cause = st.text_area("根因")
-            resolution = st.text_area("解决方案")
-            submitted = st.form_submit_button("保存案例")
-        if submitted:
-            st.json(
-                api_post(
-                    "/api/cases",
-                    {"title": title, "category": category, "root_cause": root_cause, "resolution": resolution},
-                ).json()
-            )
+            # Report
+            report = result.get("report", "")
+            if report:
+                st.subheader("📝 诊断报告")
+                st.markdown(report)
 
-# =========================================================================
-# 安全策略
-# =========================================================================
-elif page == "安全策略":
-    st.subheader("工具风险策略与沙箱说明")
-    policy = api_get("/api/tools/policy").json()
-    tools = api_get("/api/tools").json()
-    st.markdown("### 执行策略")
-    st.json(policy)
-    st.markdown("### 工具目录")
-    for tool in tools:
-        render_tool_card(tool)
-    st.info("高风险工具会进入 HITL 审批；所有工具执行都会写入审计日志和 data/sandbox 下的沙箱记录。")
+            # Phase stepper for manual advance
+            st.divider()
+            new_phase = render_phase_stepper(phase)
+            if new_phase:
+                st.info(f"阶段已切换: {phase} → {new_phase}")
+                # In a real app this would call the backend to update
 
-# =========================================================================
-# 审计日志
-# =========================================================================
-elif page == "审计日志":
-    st.subheader("审计日志")
-    col1, col2, col3, col4 = st.columns(4)
-    limit = col1.number_input("数量", min_value=10, max_value=1000, value=100, step=10)
-    actor = col2.text_input("Actor 包含")
-    action = col3.text_input("Action 包含")
-    target = col4.text_input("Target 包含")
-    params = {"limit": int(limit)}
-    if actor:
-        params["actor"] = actor
-    if action:
-        params["action"] = action
-    if target:
-        params["target"] = target
-    logs = api_get("/api/audit/logs", **params).json()
-    st.dataframe(logs, use_container_width=True)
-    st.code(json.dumps(logs, ensure_ascii=False, indent=2))
+# ---------------------------------------------------------------------------
+# Page: 案例库
+# ---------------------------------------------------------------------------
+elif page == "📋 案例库":
+    st.title("📋 案例库")
 
-# =========================================================================
-# 用户管理 (RBAC)
-# =========================================================================
-elif page == "用户管理":
-    st.subheader("RBAC 用户与权限管理")
-    status = api_get("/api/rbac/status").json()
-    st.metric("用户总数", status["users"])
-    col_admin, col_op, col_viewer = st.columns(3)
-    col_admin.metric("管理员", status["roles"].get("admin", 0))
-    col_op.metric("运维人员", status["roles"].get("operator", 0))
-    col_viewer.metric("只读用户", status["roles"].get("viewer", 0))
+    cases = fetch_cases()
+    if not cases:
+        st.info("暂无案例")
+    else:
+        # Filter bar
+        c1, c2 = st.columns(2)
+        with c1:
+            search = st.text_input("🔍 搜索案例", placeholder="关键词...")
+        with c2:
+            status_filter = st.selectbox("状态筛选", ["全部", "open", "in_progress", "resolved", "closed"])
 
-    st.markdown("### 用户列表")
-    users = api_get("/api/rbac/users").json()
-    st.dataframe(users, use_container_width=True)
+        filtered = cases
+        if search:
+            filtered = [c for c in filtered if search.lower() in json.dumps(c, ensure_ascii=False).lower()]
+        if status_filter != "全部":
+            filtered = [c for c in filtered if c.get("status") == status_filter]
 
-    st.markdown("### 新建用户")
-    with st.form("rbac-create"):
-        new_username = st.text_input("用户名", key="rbac-new-user")
-        new_password = st.text_input("密码", type="password", key="rbac-new-pass")
-        new_role = st.selectbox("角色", ["viewer", "operator", "admin"], key="rbac-new-role")
-        submitted = st.form_submit_button("创建用户")
-    if submitted and new_username:
-        result = api_post(
-            "/api/rbac/users",
-            {"username": new_username, "password": new_password, "role": new_role},
-        )
-        if result.status_code == 200:
-            data = result.json()
-            st.success(f"用户 {data['username']} 创建成功！Token: `{data['token']}`")
-            st.warning("请立即保存 Token，仅显示一次！")
-        else:
-            st.error(result.json().get("error", "创建失败"))
+        st.caption(f"共 {len(filtered)} 条记录")
 
-    st.markdown("### 管理用户")
-    selected_user = st.selectbox("选择用户", [u["username"] for u in users], key="rbac-select")
-    if selected_user:
-        col_role, col_token, col_delete = st.columns(3)
-        with col_role:
-            new_role_val = st.selectbox("修改角色", ["viewer", "operator", "admin"], key="rbac-role-update")
-            if st.button("更新角色", key="rbac-btn-role"):
-                r = requests.put(
-                    f"{API_BASE}/api/rbac/users/{selected_user}/role",
-                    json={"role": new_role_val},
-                    headers=headers(),
-                    timeout=10,
+        for case in filtered:
+            with st.container():
+                c1, c2, c3 = st.columns([3, 1, 1])
+                with c1:
+                    st.markdown(f"**{case.get('title', '无标题')}**")
+                    st.caption(case.get("description", "")[:120])
+                with c2:
+                    show_risk_badge(case.get("risk_level", "info"))
+                with c3:
+                    st.caption(f"🕐 {case.get('created_at', '')[:10]}")
+                st.divider()
+
+# ---------------------------------------------------------------------------
+# Page: 工具管理
+# ---------------------------------------------------------------------------
+elif page == "🛠️ 工具管理":
+    st.title("🛠️ 工具管理")
+
+    tools = fetch_tools()
+
+    # Tool grid
+    st.subheader("已注册工具")
+    render_tool_grid(tools, cols=2)
+
+    # Tool execution demo
+    st.divider()
+    st.subheader("⚡ 工具执行测试")
+
+    if tools:
+        tool_names = [t.get("name", str(i)) for i, t in enumerate(tools)]
+        selected_tool = st.selectbox("选择工具", tool_names)
+        test_params = st.text_input("参数 (JSON)", placeholder='{"key": "value"}')
+
+        if st.button("▶️ 执行", use_container_width=True):
+            try:
+                params = json.loads(test_params) if test_params.strip() else {}
+            except json.JSONDecodeError:
+                st.error("JSON 格式错误")
+                params = {}
+
+            with st.spinner("执行中..."):
+                result = _api_post("/api/tools/execute", {
+                    "tool_name": selected_tool,
+                    "params": params,
+                })
+
+            if result:
+                render_tool_card(
+                    tool_name=result.get("tool_name", selected_tool),
+                    status=result.get("status", "success"),
+                    description=result.get("description", ""),
+                    risk_level=result.get("risk_level", "info"),
+                    output=result.get("output", ""),
+                    duration_ms=result.get("duration_ms"),
+                    params=params,
+                    expand=True,
                 )
-                st.json(r.json())
-        with col_token:
-            if st.button("重新生成 Token", key="rbac-btn-token"):
-                r = requests.post(
-                    f"{API_BASE}/api/rbac/users/{selected_user}/token",
-                    headers=headers(),
-                    timeout=10,
-                )
-                data = r.json()
-                st.warning(f"新 Token: `{data.get('token', 'N/A')}`")
-        with col_delete:
-            if st.button("删除用户", key="rbac-btn-delete", type="secondary"):
-                r = requests.delete(
-                    f"{API_BASE}/api/rbac/users/{selected_user}",
-                    headers=headers(),
-                    timeout=10,
-                )
-                st.json(r.json())
+
+# ---------------------------------------------------------------------------
+# Page: 系统拓扑
+# ---------------------------------------------------------------------------
+elif page == "📊 系统拓扑":
+    st.title("📊 系统拓扑")
+
+    st.caption("服务架构与依赖关系")
+
+    # Render default topology
+    render_topology()
+
+    st.divider()
+    st.subheader("📡 服务端点")
+
+    services = [
+        {"name": "FastAPI Backend", "url": "http://127.0.0.1:8000", "status": "✅" if status else "❌"},
+        {"name": "Streamlit Frontend", "url": "http://127.0.0.1:8080", "status": "✅"},
+        {"name": "ChromaDB", "url": "persistent://data/chroma_db", "status": "✅" if status.get("vector_store") else "❌"},
+        {"name": "SQLite", "url": "data/tonamiibuki.db", "status": "✅"},
+    ]
+
+    for svc in services:
+        c1, c2, c3 = st.columns([2, 3, 1])
+        with c1:
+            st.markdown(f"**{svc['name']}**")
+        with c2:
+            st.code(svc["url"], language=None)
+        with c3:
+            st.markdown(svc["status"])
+
+    # API docs link
+    st.divider()
+    st.markdown("[📖 OpenAPI Docs](http://127.0.0.1:8000/docs)")
+
+# ---------------------------------------------------------------------------
+# Page: 用户管理
+# ---------------------------------------------------------------------------
+elif page == "👥 用户管理":
+    st.title("👥 用户管理")
+
+    users = fetch_users()
+
+    if users:
+        st.subheader(f"用户列表 ({len(users)})")
+        for u in users:
+            c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+            with c1:
+                st.markdown(f"**{u.get('username', '?')}**")
+            with c2:
+                st.caption(f"角色: {u.get('role', '?')}")
+            with c3:
+                enabled = u.get("enabled", True)
+                st.caption("✅ 启用" if enabled else "🚫 禁用")
+            with c4:
+                st.caption(f"创建: {u.get('created_at', '')[:10]}")
+    else:
+        st.info("暂无用户 — 请先通过 API 创建用户")
+
+    st.divider()
+
+    # Add user form
+    st.subheader("➕ 添加用户")
+    with st.form("add_user_form"):
+        new_username = st.text_input("用户名")
+        new_password = st.text_input("密码", type="password")
+        new_role = st.selectbox("角色", ["operator", "viewer"])
+        if st.form_submit_button("创建用户", use_container_width=True):
+            if new_username and new_password:
+                result = _api_post("/api/rbac/users", {
+                    "username": new_username,
+                    "password": new_password,
+                    "role": new_role,
+                })
+                if result:
+                    st.success(f"用户 {new_username} 创建成功")
+                    st.rerun()
+            else:
+                st.warning("请填写用户名和密码")

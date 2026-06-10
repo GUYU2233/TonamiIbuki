@@ -1,0 +1,64 @@
+# TonamiIbuki — .dockerignore
+# ============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data
+data/chroma_db/
+data/state/
+data/sandbox/
+data/cache/
+data/kb/state/
+data/kb/vector_index.jsonl
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env.local
+.env.*.local
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+!README.md
+*.pdf
+
+# Tests (exclude from production image)
+tests/
+
+# Config overrides
+config/local/

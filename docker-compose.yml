@@ -1,12 +1,96 @@
+# TonamiIbuki — 企业 IT 运维 AIOps 智能体
+# Multi-service Docker Compose
+
 services:
-  tonamiibuki:
-    build: .
-    container_name: tonamiibuki-aiops
+  # =========================================================================
+  # FastAPI Backend
+  # =========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: tonamiibuki-backend
     ports:
-      - "8000:8000"
-      - "8080:8080"
+      - "${BACKEND_PORT:-8000}:8000"
     env_file:
       - .env
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - LLM_MODEL=${LLM_MODEL:-mock}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-mock}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-mock}
+      - RERANKER_PROVIDER=${RERANKER_PROVIDER:-mock}
+      - VECTOR_STORE_PATH=/app/data/chroma_db
+      - SQLITE_PATH=/app/data/tonamiibuki.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ./data:/app/data
+      - tonamiibuki_data:/app/data
+      - ./config:/app/config:ro
     restart: unless-stopped
+    networks:
+      - tonamiibuki_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # =========================================================================
+  # Streamlit Frontend
+  # =========================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: tonamiibuki-frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    environment:
+      - API_BASE_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - tonamiibuki_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # =========================================================================
+  # ChromaDB (optional — can run embedded or standalone)
+  # =========================================================================
+  # chromadb:
+  #   image: chromadb/chroma:latest
+  #   container_name: tonamiibuki-chromadb
+  #   ports:
+  #     - "${CHROMA_PORT:-8001}:8000"
+  #   volumes:
+  #     - chromadb_data:/chroma/chroma
+  #   environment:
+  #     - IS_PERSISTENT=TRUE
+  #     - PERSIST_DIRECTORY=/chroma/chroma
+  #     - ANONYMIZED_TELEMETRY=FALSE
+  #   restart: unless-stopped
+  #   networks:
+  #     - tonamiibuki_net
+
+# =========================================================================
+# Volumes
+# =========================================================================
+volumes:
+  tonamiibuki_data:
+    driver: local
+  # chromadb_data:
+  #   driver: local
+
+# =========================================================================
+# Networks
+# =========================================================================
+networks:
+  tonamiibuki_net:
+    driver: bridge
