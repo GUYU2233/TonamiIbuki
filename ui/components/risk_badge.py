@@ -1,14 +1,14 @@
-"""Risk badge component for displaying risk levels with consistent styling."""
+"""风险徽章组件 — 统一的风险等级展示."""
 
 import streamlit as st
 
 _RISK_CONFIG = {
-    "critical": {"color": "#c62828", "bg": "#ffebee", "label": "Critical"},
-    "high": {"color": "#e65100", "bg": "#fff3e0", "label": "High"},
-    "medium": {"color": "#f9a825", "bg": "#fffde7", "label": "Medium"},
-    "low": {"color": "#2e7d32", "bg": "#e8f5e9", "label": "Low"},
-    "info": {"color": "#1565c0", "bg": "#e3f2fd", "label": "Info"},
-    "unknown": {"color": "#616161", "bg": "#f5f5f5", "label": "Unknown"},
+    "critical": {"color": "#c62828", "bg": "#ffebee", "label": "严重"},
+    "high": {"color": "#e65100", "bg": "#fff3e0", "label": "高"},
+    "medium": {"color": "#f9a825", "bg": "#fffde7", "label": "中"},
+    "low": {"color": "#2e7d32", "bg": "#e8f5e9", "label": "低"},
+    "info": {"color": "#1565c0", "bg": "#e3f2fd", "label": "信息"},
+    "unknown": {"color": "#616161", "bg": "#f5f5f5", "label": "未知"},
 }
 
 def _normalize(level: str) -> str:
@@ -40,7 +40,7 @@ def show_risk_badge(level: str, show_label: bool = True) -> None:
 
 def render_risk_bar(risks: dict[str, int]) -> None:
     if not risks:
-        st.caption("No risk data")
+        st.caption("无风险数据")
         return
 
     order = ["critical", "high", "medium", "low", "info"]
@@ -49,12 +49,12 @@ def render_risk_bar(risks: dict[str, int]) -> None:
         cnt = risks.get(level, 0)
         cfg = _RISK_CONFIG[level]
         cols[i].metric(
-            f"{cfg['label']}",
+            cfg["label"],
             cnt,
             delta_color="off",
         )
 
-def risk_selectbox(label: str = "Risk Level", default: str = "medium") -> str:
+def risk_selectbox(label: str = "风险等级", default: str = "medium") -> str:
     options = ["critical", "high", "medium", "low", "info"]
     return st.selectbox(
         label,

@@ -1,13 +1,13 @@
-"""Phase indicator component showing the 5-phase lifecycle progress."""
+"""阶段指示器组件 — 五阶段生命周期进度展示."""
 
 import streamlit as st
 
 PHASES = [
-    {"key": "ANALYSIS", "label": "Analysis", "desc": "Collect information, initial diagnosis"},
-    {"key": "PLANNING", "label": "Planning", "desc": "Develop remediation plan"},
-    {"key": "EXECUTION", "label": "Execution", "desc": "Execute remediation actions"},
-    {"key": "VERIFICATION", "label": "Verification", "desc": "Verify remediation results"},
-    {"key": "COMPLETION", "label": "Completion", "desc": "Generate report, archive case"},
+    {"key": "ANALYSIS", "label": "分析", "desc": "收集信息，初步诊断"},
+    {"key": "PLANNING", "label": "规划", "desc": "制定修复方案"},
+    {"key": "EXECUTION", "label": "执行", "desc": "执行修复操作"},
+    {"key": "VERIFICATION", "label": "验证", "desc": "验证修复效果"},
+    {"key": "COMPLETION", "label": "完成", "desc": "生成报告，归档案例"},
 ]
 
 PHASE_ORDER = [p["key"] for p in PHASES]
@@ -27,7 +27,7 @@ def render_phase_indicator(current_phase: str, inline: bool = False) -> None:
         for i, phase in enumerate(PHASES):
             label = phase["label"]
             if i < cur_idx:
-                cols[i].markdown(f"~~{label}~~ [done]")
+                cols[i].markdown(f"~~{label}~~ [已完成]")
             elif i == cur_idx:
                 cols[i].markdown(f"**{label}**")
             else:
@@ -36,17 +36,17 @@ def render_phase_indicator(current_phase: str, inline: bool = False) -> None:
 
     total = len(PHASES) - 1
     progress = max(0, min(cur_idx, total)) / max(total, 1)
-    st.progress(progress, text=f"Phase: {PHASE_MAP.get(current_phase, {}).get('label', current_phase)} / {PHASES[-1]['label']}")
+    st.progress(progress, text=f"当前阶段: {PHASE_MAP.get(current_phase, {}).get('label', current_phase)} / {PHASES[-1]['label']}")
 
     cols = st.columns(len(PHASES))
     for i, phase in enumerate(PHASES):
         label = phase["label"]
         if i < cur_idx:
-            bg, border, status = "#e8f5e9", "#4caf50", "Completed"
+            bg, border, status = "#e8f5e9", "#4caf50", "已完成"
         elif i == cur_idx:
-            bg, border, status = "#e3f2fd", "#2196f3", "Active"
+            bg, border, status = "#e3f2fd", "#2196f3", "进行中"
         else:
-            bg, border, status = "#f5f5f5", "#e0e0e0", "Pending"
+            bg, border, status = "#f5f5f5", "#e0e0e0", "待开始"
 
         cols[i].markdown(
             f'<div style="text-align:center;padding:8px 4px;border-radius:8px;'
@@ -60,15 +60,15 @@ def render_phase_indicator(current_phase: str, inline: bool = False) -> None:
 def render_phase_stepper(current_phase: str) -> str | None:
     cur_idx = _phase_index(current_phase)
     phase_info = PHASE_MAP.get(current_phase, PHASES[0])
-    st.info(f"**Current Phase**: {phase_info['label']} — {phase_info['desc']}")
+    st.info(f"**当前阶段**: {phase_info['label']} — {phase_info['desc']}")
 
     c1, c2, c3 = st.columns([1, 2, 1])
     prev_phase = PHASE_ORDER[cur_idx - 1] if cur_idx > 0 else None
     next_phase = PHASE_ORDER[cur_idx + 1] if cur_idx < len(PHASE_ORDER) - 1 else None
 
-    if c1.button("Previous", disabled=prev_phase is None, use_container_width=True):
+    if c1.button("上一步", disabled=prev_phase is None, use_container_width=True):
         return prev_phase
-    if c3.button("Next", disabled=next_phase is None, use_container_width=True):
+    if c3.button("下一步", disabled=next_phase is None, use_container_width=True):
         return next_phase
 
     return None

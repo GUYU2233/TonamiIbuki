@@ -1,4 +1,4 @@
-"""Evidence timeline component for diagnosis sessions."""
+"""证据时间线组件 — 诊断过程的可视化时间线."""
 
 import streamlit as st
 from datetime import datetime
@@ -15,12 +15,12 @@ def _severity_color(level: str) -> str:
 
 def render_evidence_timeline(
     evidence: list[dict],
-    title: str = "Diagnosis Evidence Timeline",
+    title: str = "诊断证据时间线",
     max_items: int = 20,
 ) -> None:
-    """Render a vertical timeline of diagnosis evidence."""
+    """渲染纵向时间线展示诊断证据."""
     if not evidence:
-        st.info("No evidence records")
+        st.info("暂无证据记录")
         return
 
     st.subheader(title)
@@ -37,7 +37,7 @@ def render_evidence_timeline(
         ts_str = ts.strftime("%H:%M:%S") if isinstance(ts, datetime) else str(ts)
         sev = item.get("severity", "info")
         color = _severity_color(sev)
-        source = item.get("source", "unknown")
+        source = item.get("source", "未知")
         message = item.get("message", "")
 
         cols = st.columns([0.06, 0.12, 0.12, 0.70])
@@ -55,7 +55,7 @@ def render_evidence_timeline(
 
         detail = item.get("detail", "")
         if detail:
-            with st.expander(f"Details #{len(display_items) - i}"):
+            with st.expander(f"详情 #{len(display_items) - i}"):
                 st.text(detail)
 
         if i < len(display_items) - 1:
@@ -65,17 +65,17 @@ def render_evidence_timeline(
             )
 
 def render_evidence_summary(evidence: list[dict]) -> None:
-    """Render a compact summary bar of evidence counts by source."""
+    """渲染证据来源与严重级别的统计概览."""
     if not evidence:
         return
 
     from collections import Counter
-    sources = Counter(item.get("source", "unknown") for item in evidence)
+    sources = Counter(item.get("source", "未知") for item in evidence)
     severities = Counter(item.get("severity", "info") for item in evidence)
 
     cols = st.columns(len(sources) + len(severities) + 1)
     idx = 0
-    cols[idx].metric("Total", len(evidence))
+    cols[idx].metric("总计", len(evidence))
     idx += 1
     for src, cnt in sources.most_common():
         cols[idx].metric(f"[{src}]", cnt)
