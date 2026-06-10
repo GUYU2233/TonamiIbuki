@@ -3,10 +3,10 @@
 import streamlit as st
 
 _RISK_CONFIG = {
-    "critical": {"color": "#c62828", "bg": "#ffebee", "label": "严重"},
-    "high": {"color": "#e65100", "bg": "#fff3e0", "label": "高"},
-    "medium": {"color": "#f9a825", "bg": "#fffde7", "label": "中"},
-    "low": {"color": "#2e7d32", "bg": "#e8f5e9", "label": "低"},
+    "critical": {"color": "#c62828", "bg": "#ffebee", "label": "严重风险"},
+    "high": {"color": "#e65100", "bg": "#fff3e0", "label": "高风险"},
+    "medium": {"color": "#f9a825", "bg": "#fffde7", "label": "中风险"},
+    "low": {"color": "#2e7d32", "bg": "#e8f5e9", "label": "低风险"},
     "info": {"color": "#1565c0", "bg": "#e3f2fd", "label": "信息"},
     "unknown": {"color": "#616161", "bg": "#f5f5f5", "label": "未知"},
 }
