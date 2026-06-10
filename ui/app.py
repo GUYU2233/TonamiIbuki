@@ -31,7 +31,7 @@ from ui.components import (
 )
 
 # --- Constants ---
-API_BASE = "http://127.0.0.1:8000"
+API_BASE = os.getenv("API_BASE", "http://backend:8000")
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +367,7 @@ elif page == "📊 系统拓扑":
     st.subheader("📡 服务端点")
 
     services = [
-        {"name": "FastAPI Backend", "url": "http://127.0.0.1:8000", "status": "✅" if status else "❌"},
+        {"name": "FastAPI Backend", "url": API_BASE, "status": "✅" if status else "❌"},
         {"name": "Streamlit Frontend", "url": "http://127.0.0.1:8080", "status": "✅"},
         {"name": "ChromaDB", "url": "persistent://data/chroma_db", "status": "✅" if status.get("vector_store") else "❌"},
         {"name": "SQLite", "url": "data/tonamiibuki.db", "status": "✅"},
@@ -384,7 +384,7 @@ elif page == "📊 系统拓扑":
 
     # API docs link
     st.divider()
-    st.markdown("[📖 OpenAPI Docs](http://127.0.0.1:8000/docs)")
+    st.markdown(f"[📖 OpenAPI Docs]({API_BASE}/docs)")
 
 # ---------------------------------------------------------------------------
 # Page: 用户管理
