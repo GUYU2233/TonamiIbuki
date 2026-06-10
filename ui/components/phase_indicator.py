@@ -42,17 +42,23 @@ def render_phase_indicator(current_phase: str, inline: bool = False) -> None:
     for i, phase in enumerate(PHASES):
         label = phase["label"]
         if i < cur_idx:
-            bg, border, status = "#e8f5e9", "#4caf50", "已完成"
+            bg, border = "#e8f5e9", "#4caf50"
+            color = "#2e7d32"
+            status_text = "已完成"
         elif i == cur_idx:
-            bg, border, status = "#e3f2fd", "#2196f3", "进行中"
+            bg, border = "#e3f2fd", "#2196f3"
+            color = "#1565c0"
+            status_text = "进行中"
         else:
-            bg, border, status = "#f5f5f5", "#e0e0e0", "待开始"
+            bg, border = "transparent", "rgba(128,128,128,0.25)"
+            color = "inherit"
+            status_text = "待开始"
 
         cols[i].markdown(
             f'<div style="text-align:center;padding:8px 4px;border-radius:8px;'
             f'background:{bg};border:2px solid {border};font-size:0.85em;">'
-            f'<div style="font-weight:600;">{label}</div>'
-            f'<div style="font-size:0.75em;color:#888;">{status}</div>'
+            f'<div style="font-weight:600;color:{color};">{label}</div>'
+            f'<div style="font-size:0.75em;color:{color};opacity:0.7;">{status_text}</div>'
             f"</div>",
             unsafe_allow_html=True,
         )
