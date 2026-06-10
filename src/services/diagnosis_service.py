@@ -20,7 +20,17 @@ from src.services.diagnosis_graph import langgraph_engine
 from src.services.ops_service import ops_service
 from src.services.rag_service import rag_service
 from src.services.sqlite_store import sqlite_store
-from src.services.tool_service import tool_registry
+from src.services.tool_service import ToolRegistry
+
+# Lazy singleton
+_tool_registry: ToolRegistry | None = None
+
+
+def _get_tool_registry() -> ToolRegistry:
+    global _tool_registry
+    if _tool_registry is None:
+        _tool_registry = ToolRegistry(simulate=True)
+    return _tool_registry
 
 
 class DiagnosisService:
@@ -85,12 +95,12 @@ class DiagnosisService:
     def _select_tool(self, analysis_text: str) -> ToolCall:
         lowered = analysis_text.lower()
         if "error-db-104" in lowered or "连接池" in lowered:
-            return tool_registry.enrich("kill_db_session", {"max_sessions": 3})
+            return _get_tool_registry().enrich("kill_db_session", {"max_sessions": 3})
         if "crashloop" in lowered or "pod" in lowered:
-            return tool_registry.enrich("rollback_deployment", {"namespace": "default", "deployment": "app"})
+            return _get_tool_registry().enrich("rollback_deployment", {"namespace": "default", "deployment": "app"})
         if "磁盘" in lowered or "disk" in lowered:
-            return tool_registry.enrich("cleanup_logs", {"path": "/var/log/nginx", "days": 7})
-        return tool_registry.enrich("check_metrics", {"window": "15m"})
+            return _get_tool_registry().enrich("cleanup_logs", {"path": "/var/log/nginx", "days": 7})
+        return _get_tool_registry().enrich("check_metrics", {"window": "15m"})
 
     def _needs_approval(self, tool: ToolCall) -> bool:
         order = [RiskLevel.low, RiskLevel.medium, RiskLevel.high, RiskLevel.critical]
@@ -210,7 +220,7 @@ class DiagnosisService:
             self._persist(session)
             return session
         if session.pending_tool:
-            result = tool_registry.execute(session.pending_tool, actor=request.operator)
+            result = _get_tool_registry().execute(session.pending_tool, actor=request.operator)
             self._append(session, "execution", "completed", "审批通过后完成工具调用", result.model_dump(mode="json"))
             session.pending_tool = None
         session.report = self._build_report(session)

@@ -10,7 +10,7 @@ from config.settings import settings
 
 class SQLiteStore:
     def __init__(self) -> None:
-        self.db_path = settings.SQLITE_DB_PATH
+        self.db_path = settings.SQLITE_PATH
         self.init()
 
     @contextmanager

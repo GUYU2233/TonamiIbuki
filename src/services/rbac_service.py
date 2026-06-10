@@ -75,7 +75,7 @@ class RBACUser:
 class RBACService:
     """In-memory RBAC with JSON persistence."""
 
-    STORE_PATH = Path(settings.KB_PATH).parent / "state" / "rbac_users.json"
+    STORE_PATH = Path(settings.KB_RUNBOOKS_PATH).parent / "state" / "rbac_users.json"
 
     def __init__(self) -> None:
         self._users: dict[str, RBACUser] = {}
@@ -119,6 +119,16 @@ class RBACService:
 
     def regenerate_token(self, username: str) -> Optional[str]:
         if username not in self._users:
+            return None
+        token = secrets.token_urlsafe(32)
+        self._users[username].token_hash = self._hash(token)
+        self._save()
+        return token
+
+    def create_token(self, username: str, password: str) -> Optional[str]:
+        """Authenticate with username/password and generate a new API token."""
+        user = self.authenticate_password(username, password)
+        if not user:
             return None
         token = secrets.token_urlsafe(32)
         self._users[username].token_hash = self._hash(token)

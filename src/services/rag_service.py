@@ -24,7 +24,7 @@ from src.services.reranker_service import reranker_service
 from src.services.vector_index import chroma_vector_index
 
 
-KB_PATH = settings.KB_PATH
+KB_PATH = Path(settings.KB_RUNBOOKS_PATH)
 
 
 class RAGService:
@@ -47,6 +47,16 @@ class RAGService:
             self.doc_vectors = []
         chroma_vector_index.rebuild(self.documents, self.tokens)
         return len(self.documents)
+
+    def get_status(self) -> dict:
+        """Return RAG pipeline status for monitoring."""
+        return {
+            "doc_count": len(self.documents),
+            "bm25_ready": self.bm25 is not None,
+            "dense_vectors": len(self.doc_vectors),
+            "embedding_provider": embedding_service.provider,
+            "reranker_provider": reranker_service.provider,
+        }
 
     def import_document(self, request: KnowledgeImportRequest) -> KnowledgeImportResponse:
         documents = self._load_documents()
@@ -132,7 +142,18 @@ class RAGService:
         if not KB_PATH.exists():
             return []
         raw = json.loads(KB_PATH.read_text(encoding="utf-8"))
-        return [RAGDocument.model_validate(item) for item in raw]
+        docs = []
+        for item in raw:
+            # Map runbook fields → RAGDocument fields
+            docs.append(RAGDocument(
+                doc_id=item.get("id", item.get("doc_id", "")),
+                title=item.get("title", ""),
+                content=item.get("content", ""),
+                source="runbook",
+                category=item.get("category", ""),
+                severity=item.get("severity", "info"),
+            ))
+        return docs
 
     def _tokenize(self, text: str) -> list[str]:
         exact_codes = re.findall(r"[A-Z]+-[A-Z]+-\d+|CrashLoopBackOff", text)

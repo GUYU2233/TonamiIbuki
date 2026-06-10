@@ -1,186 +1,324 @@
 [
   {
-    "doc_id": "kb-db-104",
-    "title": "ERROR-DB-104 数据库连接池耗尽处理",
-    "source": "runbook/db_pool.md",
-    "content": "现象：应用日志出现 ERROR-DB-104、timeout acquiring connection 或连接池 active 接近 max。排查：检查慢 SQL、长事务、数据库连接数、应用连接池配置。处置：先降级非核心流量，扩容连接池或实例，kill 长事务，补索引，观察 p95 延迟和 error rate。高风险动作如 kill session 需要审批。",
-    "tags": [
-      "database",
-      "ERROR-DB-104",
-      "connection-pool"
+    "id": "nginx_502",
+    "title": "Nginx 502 Bad Gateway — 后端服务不可达",
+    "category": "web",
+    "severity": "high",
+    "symptoms": ["502 Bad Gateway", "Nginx error", "upstream timeout"],
+    "root_causes": [
+      "后端服务进程崩溃或未启动",
+      "upstream 端口配置错误",
+      "防火墙阻断 Nginx → 后端通信",
+      "后端连接池耗尽"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查后端服务状态: systemctl status <service>",
+      "确认 upstream 配置: grep upstream /etc/nginx/conf.d/*.conf",
+      "测试后端连通性: curl -v http://127.0.0.1:<port>/health",
+      "检查防火墙: iptables -L -n | grep <port>",
+      "查看 Nginx 错误日志: tail -100 /var/log/nginx/error.log",
+      "重启后端服务后重试"
+    ],
+    "content": "Nginx 502 Bad Gateway 表示代理服务器从上游服务器收到无效响应。常见于后端服务崩溃、upstream 端口配置错误、防火墙阻断或连接池耗尽。排查步骤：1) 确认后端进程存活 2) 检查 upstream 配置 3) 测试本地连通性 4) 查看 Nginx 错误日志定位具体 upstream 地址。"
   },
   {
-    "doc_id": "kb-k8s-crashloop",
-    "title": "Kubernetes CrashLoopBackOff 排查流程",
-    "source": "runbook/k8s_crashloop.md",
-    "content": "CrashLoopBackOff 通常由启动命令错误、配置缺失、探针失败或依赖不可达导致。先 kubectl describe pod 查看 Events，再 kubectl logs --previous 查看上一次崩溃日志。修复建议包括回滚镜像、补齐 ConfigMap/Secret、调整探针阈值。",
-    "tags": [
-      "kubernetes",
-      "pod",
-      "CrashLoopBackOff"
+    "id": "nginx_504",
+    "title": "Nginx 504 Gateway Timeout — 后端响应超时",
+    "category": "web",
+    "severity": "high",
+    "symptoms": ["504 Gateway Timeout", "长时间等待", "请求卡死"],
+    "root_causes": [
+      "后端处理耗时过长，超过 proxy_read_timeout",
+      "数据库慢查询阻塞",
+      "上游服务资源不足 (CPU/内存耗尽)"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查 proxy_read_timeout 配置: grep proxy_read_timeout /etc/nginx/nginx.conf",
+      "查看后端应用日志定位慢请求",
+      "分析数据库慢查询: 检查 slow_query_log",
+      "检查系统资源: top / htop / free -m",
+      "临时增大超时或优化后端代码"
+    ],
+    "content": "Nginx 504 表示后端服务处理超时。通常是后端处理时间超过 Nginx proxy_read_timeout (默认 60s)。排查：检查后端慢请求、数据库慢查询、系统资源。临时缓解可增大超时，根本解决需优化后端性能。"
   },
   {
-    "doc_id": "kb-disk-90",
-    "title": "Linux 磁盘使用率超过 90% 应急处理",
-    "source": "runbook/linux_disk.md",
-    "content": "磁盘空间告警需先确认分区、目录占用和增长速度。常用命令包括 df -h、du -sh、lsof | grep deleted。处置包括清理临时文件、归档日志、修复 logrotate。删除生产文件属于中高风险操作，应保留证据。",
-    "tags": [
-      "linux",
-      "disk",
-      "logrotate"
+    "id": "disk_full",
+    "title": "磁盘空间不足 — 服务写失败",
+    "category": "system",
+    "severity": "critical",
+    "symptoms": ["磁盘写入失败", "No space left on device", "服务异常退出"],
+    "root_causes": [
+      "日志文件未轮转，长期累积",
+      "数据库 binlog 堆积",
+      "Docker 镜像/容器占满磁盘",
+      "临时文件未清理"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查磁盘使用: df -h",
+      "定位大目录: du -sh /* 2>/dev/null | sort -rh | head -20",
+      "清理日志: journalctl --vacuum-size=500M",
+      "清理 Docker: docker system prune -a -f",
+      "清理临时文件: rm -rf /tmp/* /var/tmp/*",
+      "配置 logrotate 防止复发"
+    ],
+    "content": "磁盘空间不足会导致服务无法写入日志、数据库停止响应等问题。快速排查用 df -h 确认分区使用率，du 定位大文件/目录。常见原因：日志未轮转、Docker 残留、数据库 binlog。短期清理释放空间，长期配置 logrotate 和监控告警。"
   },
   {
-    "doc_id": "kb-redis-latency",
-    "title": "Redis 延迟升高诊断",
-    "source": "runbook/redis_latency.md",
-    "content": "Redis 延迟升高可能来自 big key、慢查询、内存淘汰、网络抖动或持久化阻塞。排查 slowlog、latency doctor、used_memory、evicted_keys。临时处置可限流热点 key，扩容分片，谨慎执行删除大 key。",
-    "tags": [
-      "redis",
-      "latency",
-      "cache"
+    "id": "high_cpu",
+    "title": "CPU 使用率异常飙升",
+    "category": "system",
+    "severity": "high",
+    "symptoms": ["CPU > 90%", "服务响应变慢", "系统负载升高"],
+    "root_causes": [
+      "应用死循环或无限递归",
+      "GC 频繁触发 (Java/Go)",
+      "正则表达式灾难性回溯",
+      "挖矿病毒或恶意进程"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "定位高 CPU 进程: top -o %CPU",
+      "查看进程详情: ps aux | grep <pid>",
+      "分析线程: top -H -p <pid>",
+      "Java 应用: jstack <pid> 分析线程栈",
+      "检查是否有异常进程: 对比已知服务列表",
+      "必要时 kill 问题进程并重启"
+    ],
+    "content": "CPU 使用率飙升影响所有服务。用 top 定位问题进程，进一步分析线程和堆栈。常见原因：代码死循环、GC 频繁、正则回溯、恶意程序。紧急时可先 kill 恢复服务，再深入排查根因。"
   },
   {
-    "doc_id": "kb-ops-manual",
-    "title": "运维操作手册 - 服务启停与监控",
-    "source": "runbook/ops_manual.md",
-    "content": "## 服务管理\n- Nginx: systemctl start/stop/restart nginx, 重载配置 nginx -s reload\n- Docker: docker start/stop/restart <container>, docker-compose up/down\n- K8s: kubectl scale deployment <name> --replicas=<n>, kubectl rollout restart deployment <name>\n\n## 监控指标\n- CPU: 使用率 < 80%, load average < CPU核心数*0.7\n- 内存: 使用率 < 85%, swap < 10%\n- 磁盘: 使用率 < 85%, iowait < 10%\n- 网络: 丢包率 < 0.1%, 延迟 < 5ms (内网)\n\n## 告警级别\n- P0 Critical: 核心服务不可用, 立即响应\n- P1 High: 性能严重下降, 15分钟响应\n- P2 Medium: 非核心异常, 1小时响应\n- P3 Low: 预警通知, 工作时间处理",
-    "tags": [
-      "ops",
-      "monitor",
-      "nginx",
-      "docker",
-      "kubernetes"
+    "id": "oom_kill",
+    "title": "OOM Killer — 内存耗尽进程被杀",
+    "category": "system",
+    "severity": "critical",
+    "symptoms": ["进程莫名消失", "dmesg 显示 oom-killer", "内存持续增长"],
+    "root_causes": [
+      "内存泄漏 (应用代码)",
+      "缓存未设上限 (Redis/Memcached)",
+      "大文件一次性读入内存",
+      "容器内存限制过低"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "确认 OOM: dmesg | grep -i oom",
+      "查看内存使用: free -h && cat /proc/meminfo",
+      "定位高内存进程: ps aux --sort=-%mem | head -20",
+      "Java: jmap -heap <pid> 分析堆",
+      "检查容器限制: docker stats",
+      "临时增加 swap 或重启服务"
+    ],
+    "content": "OOM Killer 是 Linux 在内存不足时强制终止进程的机制。排查用 dmesg 确认 OOM 事件，定位高内存进程。常见原因：内存泄漏、缓存无限增长、容器限制过低。根治需修复泄漏或增加内存/swap。"
   },
   {
-    "doc_id": "kb-troubleshooting",
-    "title": "故障排查 SOP - CPU/内存/磁盘/网络",
-    "source": "runbook/troubleshooting_guide.md",
-    "content": "## CPU 过高排查 SOP\n1. top/htop 确认高 CPU 进程 PID\n2. perf top -p <PID> 查看热点函数\n3. 检查 GC 频率、死循环、正则回溯\n4. 处置: 限制资源、优化代码、扩容\n\n## 内存泄漏排查 SOP\n1. free -h 确认内存使用\n2. pmap -x <PID> 查看进程内存映射\n3. jmap -histo <PID> (Java) 分析对象分布\n4. 处置: 重启服务、修复内存泄漏、增加内存\n\n## 磁盘 I/O 排查 SOP\n1. iostat -x 1 查看磁盘利用率\n2. iotop 定位高 I/O 进程\n3. lsof 检查大文件写入\n4. 处置: 清理日志、优化 I/O、迁移数据\n\n## 网络故障排查 SOP\n1. ping/traceroute 测试连通性\n2. ss -tlnp 检查端口监听\n3. tcpdump 抓包分析\n4. 处置: 检查防火墙、修复 DNS、调整超时",
-    "tags": [
-      "troubleshooting",
-      "cpu",
-      "memory",
-      "disk",
-      "network",
-      "SOP"
+    "id": "mysql_slow",
+    "title": "MySQL 慢查询 — 数据库性能下降",
+    "category": "database",
+    "severity": "medium",
+    "symptoms": ["查询超时", "应用响应慢", "数据库 CPU 高"],
+    "root_causes": [
+      "缺少索引或索引失效",
+      "SQL 未优化 (全表扫描)",
+      "锁等待 (行锁/表锁)",
+      "连接数过多"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "开启慢查询日志: SET GLOBAL slow_query_log=ON",
+      "分析慢查询: pt-query-digest 或 mysqldumpslow",
+      "查看当前查询: SHOW FULL PROCESSLIST",
+      "检查索引: EXPLAIN <slow_query>",
+      "检查锁: SHOW ENGINE INNODB STATUS",
+      "添加缺失索引或优化 SQL"
+    ],
+    "content": "MySQL 慢查询拖慢整个应用。先开启 slow_query_log 捕获慢 SQL，用 EXPLAIN 分析执行计划。常见优化：添加索引、避免 SELECT *、优化 JOIN、分库分表。紧急时 kill 长时间运行的查询。"
   },
   {
-    "doc_id": "kb-config-templates",
-    "title": "配置模板 - Nginx/Docker/K8s",
-    "source": "runbook/config_templates.md",
-    "content": "## Nginx 反向代理配置\nupstream backend { server 127.0.0.1:3000 max_fails=3 fail_timeout=30s; }\nserver { listen 80; location / { proxy_pass http://backend; proxy_connect_timeout 5s; } }\n\n## Docker Compose 模板\nservices:\n  app:\n    image: myapp:latest\n    ports: [\"8080:8080\"]\n    restart: always\n    healthcheck: { test: [\"CMD\", \"curl -f http://localhost:8080/health\"], interval: 30s }\n\n## K8s Deployment 模板\napiVersion: apps/v1\nkind: Deployment\nspec:\n  replicas: 3\n  selector: { matchLabels: { app: myapp } }\n  template:\n    spec:\n      containers:\n      - name: app\n        image: myapp:latest\n        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }\n        livenessProbe: { httpGet: { path: /health, port: 8080 }, initialDelaySeconds: 15 }\n        readinessProbe: { httpGet: { path: /ready, port: 8080 }, initialDelaySeconds: 5 }",
-    "tags": [
-      "config",
-      "nginx",
-      "docker",
-      "kubernetes",
-      "template"
+    "id": "redis_oom",
+    "title": "Redis 内存溢出 — 缓存服务异常",
+    "category": "database",
+    "severity": "high",
+    "symptoms": ["Redis OOM 错误", "写入被拒绝", "淘汰策略触发"],
+    "root_causes": [
+      "maxmemory 配置过低",
+      "key 未设置过期时间，无限增长",
+      "大 key 占用过多内存",
+      "客户端泄漏导致连接堆积"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查内存: INFO memory",
+      "查看大 key: redis-cli --bigkeys",
+      "检查过期策略: CONFIG GET maxmemory-policy",
+      "查看 key 数量趋势: DBSIZE",
+      "清理无用 key 或调整 maxmemory",
+      "设置合理过期时间"
+    ],
+    "content": "Redis OOM 导致写入被拒绝。用 INFO memory 查看使用量，--bigkeys 定位大 key。常见问题：maxmemory 过低、key 未设 TTL、大 key 积压。解决：增加内存/优化数据结构/设置淘汰策略。"
   },
   {
-    "doc_id": "kb-security-policy",
-    "title": "安全策略 - 访问控制与变更管理",
-    "source": "runbook/security_policy.md",
-    "content": "## 访问控制\n- 最小权限原则: 运维人员仅授予所需最小权限\n- 多因素认证: 生产环境强制 MFA\n- 堡垒机: 所有 SSH 操作通过堡垒机审计\n- API Token: 定期轮换，有效期 <= 90天\n\n## 变更管理\n- 变更分级: 标准变更(低风险)、紧急变更(中风险)、重大变更(高风险)\n- 审批流程: 高风险变更需至少2人审批\n- 变更窗口: 非核心业务 02:00-06:00\n- 回滚方案: 每次变更必须有可执行回滚方案\n\n## 合规要求\n- 日志保留 >= 180天\n- 操作审计: 所有生产操作记录 actor/action/target/timestamp\n- 敏感数据: 禁止在日志中输出密码/Token/密钥",
-    "tags": [
-      "security",
-      "compliance",
-      "access-control",
-      "change-management"
+    "id": "ssl_expiry",
+    "title": "SSL/TLS 证书过期",
+    "category": "security",
+    "severity": "critical",
+    "symptoms": ["浏览器证书错误", "API 调用失败", "证书过期警告"],
+    "root_causes": [
+      "证书未及时续期",
+      "Let's Encrypt 自动续期失败",
+      "证书链不完整"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查证书有效期: openssl x509 -in cert.pem -noout -dates",
+      "Let's Encrypt: certbot renew --dry-run",
+      "检查证书链: openssl s_client -connect example.com:443",
+      "手动续期: certbot renew --force-renewal",
+      "重载 Nginx: nginx -s reload"
+    ],
+    "content": "SSL 证书过期导致 HTTPS 不可用。用 openssl 或浏览器检查证书到期时间。Let's Encrypt 用户检查 certbot 定时任务是否正常。紧急处理：手动 renew 后重载 Web 服务器。建议设置到期前 30 天自动告警。"
   },
   {
-    "doc_id": "kb-error-codes",
-    "title": "常见错误码对照表",
-    "source": "runbook/error_codes.md",
-    "content": "## HTTP 错误码\n- 400 Bad Request: 请求参数格式错误\n- 401 Unauthorized: 认证失败\n- 403 Forbidden (ERR_403_AUTH): 权限不足\n- 404 Not Found: 资源不存在\n- 429 Too Many Requests: 请求频率超限\n- 500 Internal Server Error: 服务器内部错误\n- 502 Bad Gateway: 上游服务不可达\n- 503 Service Unavailable: 服务过载或维护\n- 504 Gateway Timeout: 上游响应超时\n\n## 系统错误码\n- EMFILE: 文件描述符耗尽，调整 ulimit -n\n- OOM_KILLED: 内存不足被 OOM Killer 终止\n- SIGSEGV: 段错误，检查空指针或内存越界\n- ERR_CONNECTION_REFUSED: 目标端口未监听\n- ERR_CONNECTION_TIMEOUT: 连接超时\n- ERR_SSL_PROTOCOL_ERROR: SSL/TLS 协议错误\n- ERR_CERT_EXPIRED: 证书过期\n\n## 应用错误码\n- ERROR-DB-104: 数据库连接池耗尽\n- ERROR-DB-105: 数据库死锁检测\n- ERROR-CACHE-201: 缓存穿透\n- ERROR-CACHE-202: 缓存雪崩\n- ERROR-QUEUE-301: 消息队列积压\n- ERROR-AUTH-401: Token 过期",
-    "tags": [
-      "error-codes",
-      "HTTP",
-      "system",
-      "application",
-      "reference"
+    "id": "dns_failure",
+    "title": "DNS 解析失败 — 服务无法访问外部",
+    "category": "network",
+    "severity": "high",
+    "symptoms": ["域名无法解析", "UnknownHostException", "连接超时"],
+    "root_causes": [
+      "/etc/resolv.conf 配置错误",
+      "DNS 服务器不可达",
+      "DNS 缓存污染",
+      "防火墙阻断 DNS (53/udp)"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "测试解析: nslookup example.com 或 dig example.com",
+      "检查配置: cat /etc/resolv.conf",
+      "测试 DNS 连通: ping 8.8.8.8",
+      "检查 systemd-resolved: systemctl status systemd-resolved",
+      "清理 DNS 缓存: systemd-resolve --flush-caches",
+      "修改 /etc/resolv.conf 添加备用 DNS"
+    ],
+    "content": "DNS 解析失败导致所有外部调用失败。排查用 dig/nslookup 测试，检查 /etc/resolv.conf 配置。常见原因：DNS 服务器变更、防火墙规则、resolv.conf 被覆盖。临时可添加公共 DNS (8.8.8.8)。"
   },
   {
-    "doc_id": "kb-407d2f98",
-    "title": "ERROR-DB-104 数据库连接池耗尽处理",
-    "source": "manual/db-104",
-    "content": "ERROR-DB-104 表示数据库连接池耗尽。检查连接池配置、慢查询、最大连接数和网络延迟。",
-    "tags": [
-      "database",
-      "connection-pool"
+    "id": "k8s_pod_crashloop",
+    "title": "Kubernetes Pod CrashLoopBackOff",
+    "category": "kubernetes",
+    "severity": "high",
+    "symptoms": ["Pod 反复重启", "CrashLoopBackOff 状态", "容器启动后立即退出"],
+    "root_causes": [
+      "应用启动即崩溃 (panic/exit 1)",
+      "健康检查配置错误 (liveness probe)",
+      "资源限制过低 (OOMKilled)",
+      "ConfigMap/Secret 缺失"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "查看 Pod 状态: kubectl describe pod <name>",
+      "查看日志: kubectl logs <pod> --previous",
+      "检查事件: kubectl get events --field-selector involvedObject.name=<pod>",
+      "检查资源: kubectl top pod <name>",
+      "检查配置: kubectl get configmap/secret",
+      "修正后滚动重启: kubectl rollout restart deployment/<name>"
+    ],
+    "content": "CrashLoopBackOff 表示 Pod 反复启动失败。用 kubectl describe 查看退出原因，kubectl logs --previous 看上次运行日志。常见原因：应用 bug、健康检查过严、OOM、配置缺失。修正后滚动更新即可。"
   },
   {
-    "doc_id": "kb-77339c7d",
-    "title": "Nginx 502 网关错误排查",
-    "source": "manual/nginx_502.md",
-    "content": "Nginx 502 通常与上游服务不可达、连接超时或反向代理配置错误有关。排查Nginx 502上游不可达方法包括检查PHP-FPM状态和端口监听。",
-    "tags": [
-      "nginx",
-      "502"
+    "id": "k8s_node_notready",
+    "title": "Kubernetes Node NotReady — 节点不可调度",
+    "category": "kubernetes",
+    "severity": "critical",
+    "symptoms": ["Node 状态 NotReady", "Pod 无法调度", "节点资源异常"],
+    "root_causes": [
+      "kubelet 进程异常",
+      "节点磁盘/内存压力",
+      "CNI 网络插件故障",
+      "节点内核 panic"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查节点状态: kubectl get nodes",
+      "查看节点详情: kubectl describe node <name>",
+      "检查 kubelet: systemctl status kubelet",
+      "检查磁盘: df -h (节点磁盘压力会触发驱逐)",
+      "检查 CNI: 查看网络插件 Pod 状态",
+      "必要时 cordon + drain 迁移工作负载"
+    ],
+    "content": "Node NotReady 导致该节点上 Pod 无法正常工作。排查 kubelet 状态、节点资源 (磁盘/内存压力)、CNI 插件。紧急处理：cordon 节点阻止调度，drain 迁移现有 Pod。长期需监控节点健康并配置自动修复。"
   },
   {
-    "doc_id": "kb-91812b07",
-    "title": "nginx_502.md#1",
-    "source": "data/knowledge/nginx_502.md",
-    "content": "# Nginx 502 Bad Gateway 排查手册\n\n## 现象\n客户端收到 HTTP 502 Bad Gateway 错误。\n\n## 常见原因\n1. 上游服务（如 PHP-FPM、uWSGI、Gunicorn）未启动或已崩溃\n2. 上游服务响应超时（proxy_read_timeout 过短）\n3. 上游服务返回了无效响应\n4. 网络问题导致 Nginx 无法连接上游\n\n## 排查步骤\n1. `systemctl status php-fpm` 确认上游服务状态\n2. `tail -f /var/log/nginx/error.log` 查看 Nginx 错误日志\n3. `ss -tlnp | grep :9000` 确认上游端口监听\n4. `curl -v http://127.0.0.1:9000` 直接测试上游连通性\n\n## 处置方法\n1. 重启上游服务：`systemctl restart php-fpm`\n2. 调整 Nginx 超时配置：`proxy_read_timeout 60s`\n3. 检查上游服务资源限制（max_children、内存等）\n4. 临时降级：返回静态维护页面",
-    "tags": [
-      "md",
-      "bulk-import"
+    "id": "docker_daemon_down",
+    "title": "Docker 守护进程异常",
+    "category": "container",
+    "severity": "critical",
+    "symptoms": ["docker ps 无响应", "容器全部停止", "Cannot connect to Docker daemon"],
+    "root_causes": [
+      "Docker daemon 崩溃",
+      "磁盘空间不足导致 daemon 挂起",
+      "内核版本与 Docker 不兼容",
+      "containerd 异常"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查 daemon 状态: systemctl status docker",
+      "查看日志: journalctl -u docker -n 100",
+      "检查磁盘: df -h /var/lib/docker",
+      "重启 daemon: systemctl restart docker",
+      "检查 containerd: systemctl status containerd",
+      "若持续异常考虑升级 Docker 版本"
+    ],
+    "content": "Docker daemon 异常导致所有容器不可用。先检查 daemon 状态和日志，确认磁盘空间。常见原因：磁盘满、内核兼容性、containerd 异常。紧急重启 daemon 恢复，长期需配置 daemon 监控和日志轮转。"
   },
   {
-    "doc_id": "kb-ebd16b98",
-    "title": "ERROR-DB-104 数据库连接池耗尽处理",
-    "source": "manual/db-104",
-    "content": "ERROR-DB-104 表示数据库连接池耗尽。检查连接池配置、慢查询、最大连接数和网络延迟。",
-    "tags": [
-      "database",
-      "connection-pool"
+    "id": "file_descriptor_exhaust",
+    "title": "文件描述符耗尽 — Too Many Open Files",
+    "category": "system",
+    "severity": "high",
+    "symptoms": ["Too many open files 错误", "新连接被拒绝", "日志写入失败"],
+    "root_causes": [
+      "ulimit 配置过低",
+      "连接泄漏 (未关闭 socket/file)",
+      "高并发下 fd 不足"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "查看限制: ulimit -n",
+      "查看进程 fd: ls /proc/<pid>/fd | wc -l",
+      "查看系统限制: cat /proc/sys/fs/file-max",
+      "临时增大: ulimit -n 65536",
+      "永久修改: /etc/security/limits.conf",
+      "检查代码中的连接泄漏"
+    ],
+    "content": "文件描述符耗尽导致新连接被拒绝。查看当前使用量 ls /proc/<pid>/fd，对比 ulimit 限制。常见原因：连接泄漏、高并发、默认限制过低。临时增大 ulimit，长期需修复泄漏并配置合理的 limits。"
   },
   {
-    "doc_id": "kb-227e8af3",
-    "title": "Nginx 502 网关错误排查",
-    "source": "manual/nginx_502.md",
-    "content": "Nginx 502 通常与上游服务不可达、连接超时或反向代理配置错误有关。排查Nginx 502上游不可达方法包括检查PHP-FPM状态和端口监听。",
-    "tags": [
-      "nginx",
-      "502"
+    "id": "api_rate_limit",
+    "title": "API 被限流 — 第三方服务调用失败",
+    "category": "integration",
+    "severity": "medium",
+    "symptoms": ["429 Too Many Requests", "API 调用被拒绝", "业务中断"],
+    "root_causes": [
+      "调用频率超过第三方限制",
+      "重试策略过于激进 (雪崩)",
+      "未使用缓存减少调用"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "检查错误日志确认限流响应",
+      "查看第三方 API 限额文档",
+      "实现指数退避重试 (exponential backoff)",
+      "添加本地缓存减少重复调用",
+      "申请提高限额或分散调用",
+      "添加调用频率监控告警"
+    ],
+    "content": "第三方 API 限流导致业务调用失败。实现指数退避重试避免雪崩，添加本地缓存减少调用次数。长期需要监控调用频率、申请更高限额或使用多个 API key 分散压力。"
   },
   {
-    "doc_id": "kb-94996cbe",
-    "title": "nginx_502.md#1",
-    "source": "data/knowledge/nginx_502.md",
-    "content": "# Nginx 502 Bad Gateway 排查手册\n\n## 现象\n客户端收到 HTTP 502 Bad Gateway 错误。\n\n## 常见原因\n1. 上游服务（如 PHP-FPM、uWSGI、Gunicorn）未启动或已崩溃\n2. 上游服务响应超时（proxy_read_timeout 过短）\n3. 上游服务返回了无效响应\n4. 网络问题导致 Nginx 无法连接上游\n\n## 排查步骤\n1. `systemctl status php-fpm` 确认上游服务状态\n2. `tail -f /var/log/nginx/error.log` 查看 Nginx 错误日志\n3. `ss -tlnp | grep :9000` 确认上游端口监听\n4. `curl -v http://127.0.0.1:9000` 直接测试上游连通性\n\n## 处置方法\n1. 重启上游服务：`systemctl restart php-fpm`\n2. 调整 Nginx 超时配置：`proxy_read_timeout 60s`\n3. 检查上游服务资源限制（max_children、内存等）\n4. 临时降级：返回静态维护页面",
-    "tags": [
-      "md",
-      "bulk-import"
+    "id": "config_drift",
+    "title": "配置漂移 — 环境配置不一致",
+    "category": "devops",
+    "severity": "medium",
+    "symptoms": ["生产/预发行为不一致", "配置项缺失", "环境差异导致 bug"],
+    "root_causes": [
+      "手动修改未同步到配置管理",
+      "GitOps 流程未严格执行",
+      "多环境配置模板未统一"
     ],
-    "score": 0.0
+    "fix_steps": [
+      "对比环境配置: diff 生产 vs 预发配置",
+      "统一到配置中心 (Consul/Vault/AWS Parameter Store)",
+      "实施 GitOps 禁止手动修改",
+      "添加配置变更审计",
+      "定期配置漂移检测"
+    ],
+    "content": "配置漂移是手动修改导致的环境不一致问题。通过配置中心统一管理、GitOps 流程禁止手动修改、定期漂移检测来解决。发现漂移后先对齐配置，再追溯根因改进流程。"
   }
 ]

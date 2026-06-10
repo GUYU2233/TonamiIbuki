@@ -32,7 +32,17 @@ from src.models import (
 from src.services.audit_service import audit_service
 from src.services.ops_service import ops_service
 from src.services.rag_service import rag_service
-from src.services.tool_service import tool_registry
+from src.services.tool_service import ToolRegistry
+
+# Lazy singleton
+_tool_registry: ToolRegistry | None = None
+
+
+def _get_tool_registry() -> ToolRegistry:
+    global _tool_registry
+    if _tool_registry is None:
+        _tool_registry = ToolRegistry(simulate=True)
+    return _tool_registry
 from src.services.phasemanager import Phase, PhaseManager
 
 
@@ -143,7 +153,7 @@ def _execution_node(state: DiagnosisState) -> dict:
         tool = ToolCall.model_validate_json(state["tool_json"])
     except Exception:
         return {"result_json": "{}"}
-    result = tool_registry.execute(tool)
+    result = _get_tool_registry().execute(tool.name, tool.arguments)
     events: list[dict] = state.get("events", [])
     pm = PhaseManager()
     pm.jump_to(Phase.EXECUTION)
@@ -152,12 +162,12 @@ def _execution_node(state: DiagnosisState) -> dict:
             "step": "execution",
             "status": "completed",
             "message": "Execution Agent 完成工具调用",
-            "payload": result.model_dump(mode="json"),
+            "payload": result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "phase": pm.snapshot(),
         }
     )
-    return {"result_json": result.model_dump_json(), "events": events}
+    return {"result_json": json.dumps(result, default=str), "events": events}
 
 
 def _report_node(state: DiagnosisState) -> dict:
@@ -184,15 +194,13 @@ def _supervisor_hold_node(state: DiagnosisState) -> dict:
     try:
         tool = ToolCall.model_validate_json(state["tool_json"])
     except Exception:
-        tool_json_str = "{}"
-    else:
-        tool_json_str = tool.model_dump_json()
+        tool = None
     events.append(
         {
             "step": "supervisor",
             "status": "waiting_approval",
             "message": "高风险操作已暂停，等待人工审批",
-            "payload": json.loads(tool_json_str) if isinstance(tool_json_str, str) else {},
+            "payload": tool.model_dump(mode="json") if tool else {},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
@@ -225,12 +233,12 @@ def _needs_approval(state: DiagnosisState) -> str:
 def _select_tool(analysis_text: str) -> ToolCall:
     lowered = analysis_text.lower()
     if "error-db-104" in lowered or "连接池" in lowered:
-        return tool_registry.enrich("kill_db_session", {"max_sessions": 3})
+        return ToolCall(name="kill_db_session", arguments={"max_sessions": 3}, risk_level=RiskLevel.critical)
     if "crashloop" in lowered or "pod" in lowered:
-        return tool_registry.enrich("rollback_deployment", {"namespace": "default", "deployment": "app"})
+        return ToolCall(name="rollback_deployment", arguments={"namespace": "default", "deployment": "app"}, risk_level=RiskLevel.high)
     if "磁盘" in lowered or "disk" in lowered:
-        return tool_registry.enrich("cleanup_logs", {"path": "/var/log/nginx", "days": 7})
-    return tool_registry.enrich("check_metrics", {"window": "15m"})
+        return ToolCall(name="cleanup_logs", arguments={"path": "/var/log/nginx", "days": 7}, risk_level=RiskLevel.medium)
+    return ToolCall(name="check_metrics", arguments={"window": "15m"}, risk_level=RiskLevel.low)
 
 
 # ---------------------------------------------------------------------------

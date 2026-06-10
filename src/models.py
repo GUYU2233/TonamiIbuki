@@ -193,3 +193,25 @@ class AuditLog(BaseModel):
     target: str
     detail: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TokenRequest(BaseModel):
+    """Login / token request."""
+    username: str
+    password: str
+
+
+class UserCreate(BaseModel):
+    """RBAC user creation request."""
+    username: str
+    password: str
+    role: str = "viewer"
+
+
+class UserResponse(BaseModel):
+    """RBAC user response."""
+    username: str
+    role: str
+    enabled: bool
+    created_at: str
+    token: str | None = None

@@ -1,244 +1,284 @@
-from fastapi import APIRouter
+"""API routes — TonamiIbuki AIOps backend."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
 
 from src.models import (
-    AlertRequest,
-    AuditQuery,
-    CaseRecord,
-    KnowledgeBulkImportRequest,
-    KnowledgeImportRequest,
-    LLMChatRequest,
-    RAGEvalItem,
+    DiagnosisRequest,
+    UserCreate,
+    TokenRequest,
     RAGQuery,
-    TicketRequest,
+    CaseRecord,
 )
-from src.services.audit_service import audit_service
-from src.services.case_service import case_service
-from src.services.ops_service import ops_service
-from src.services.rag_service import rag_service
-from src.services.diagnosis_service import diagnosis_service
-from src.services.tool_service import tool_registry
-from src.services.llm_service import llm_service
-from src.services.prompt_service import prompt_service
-from src.services.vector_index import chroma_vector_index
-from src.services.embedding_service import embedding_service
-from src.services.reranker_service import reranker_service
-from src.services.phasemanager import Phase, PhaseManager, PHASE_OWNERS, PHASE_DESCRIPTIONS
-from src.services.rbac_service import rbac_service, Role
+from src.services.llm_service import LLMService
+from src.services.rag_service import RAGService
+from src.services.diagnosis_service import DiagnosisService
+from src.services.tool_service import ToolRegistry
+from src.services.case_service import CaseService
+from src.services.audit_service import AuditService
+from src.services.phasemanager import PhaseManager
+from src.services.rbac_service import RBACService
+from src.services.evaluation_service import EvaluationService
 
-router = APIRouter(prefix="/api", tags=["ops"])
+router = APIRouter(prefix="/api")
 
-
-@router.post("/alert/analyze")
-def analyze_alert(request: AlertRequest):
-    return ops_service.analyze_alert(request)
+# ---------------------------------------------------------------------------
+# Service singletons (lazy init)
+# ---------------------------------------------------------------------------
+_services: dict = {}
 
 
-@router.post("/ticket/process")
-def process_ticket(request: TicketRequest):
-    return ops_service.process_ticket(request)
+def _svc(name: str):
+    if name not in _services:
+        if name == "llm":
+            _services[name] = LLMService()
+        elif name == "rag":
+            _services[name] = RAGService()
+        elif name == "diagnosis":
+            _services[name] = DiagnosisService()
+        elif name == "tools":
+            _services[name] = ToolRegistry(simulate=True)
+        elif name == "cases":
+            _services[name] = CaseService()
+        elif name == "audit":
+            _services[name] = AuditService()
+        elif name == "phase":
+            _services[name] = PhaseManager()
+        elif name == "rbac":
+            _services[name] = RBACService()
+        elif name == "evaluation":
+            _services[name] = EvaluationService()
+    return _services[name]
 
 
-@router.get("/prompts")
-def list_prompts():
-    return prompt_service.list_prompts()
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+@router.get("/health")
+async def health():
+    return {"status": "ok", "version": "0.2.0"}
 
 
-@router.get("/prompts/{name}")
-def get_prompt(name: str):
-    return {"name": name, "content": prompt_service.get(name)}
+# ---------------------------------------------------------------------------
+# Diagnosis
+# ---------------------------------------------------------------------------
+@router.post("/diagnose")
+async def diagnose(req: DiagnosisRequest):
+    audit = _svc("audit")
+    audit.write("system", "diagnosis_start", req.title)
+    try:
+        result = await _svc("diagnosis").diagnose(req)
+        audit.write("system", "diagnosis_complete", result.id)
+        return result
+    except Exception as e:
+        audit.write("system", "diagnosis_error", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/llm/chat")
-def llm_chat(request: LLMChatRequest):
-    return llm_service.chat(request)
-
-
-@router.get("/monitor/metrics")
-def monitor_metrics():
-    return diagnosis_service.metrics_snapshot()
-
-
-@router.get("/system/self-check")
-def system_self_check():
-    metrics = diagnosis_service.metrics_snapshot()
-    audits = audit_service.list(limit=5)
-    cases = case_service.list()
-    return {
-        "status": "ok",
-        "checks": {
-            "api": "ok",
-            "rag_documents": len(rag_service.documents),
-            "vector_index": chroma_vector_index.status(),
-            "embedding": embedding_service.status(),
-            "reranker": reranker_service.status(),
-            "rbac": rbac_service.status(),
-            "case_records": len(cases),
-            "recent_audit_logs": len(audits),
-            "tool_mode": tool_registry.policy()["mode"],
-            "waiting_approvals": metrics["waiting_approvals"],
-        },
-    }
-
-
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
 @router.get("/tools")
-def list_tools():
-    return tool_registry.list_tools()
+async def list_tools():
+    return {"tools": _svc("tools").list_tools()}
 
 
-@router.get("/tools/policy")
-def tool_policy():
-    return tool_registry.policy()
+@router.post("/tools/execute")
+async def execute_tool(req: Request):
+    body = await req.json()
+    result = _svc("tools").execute(body.get("tool_name", ""), body.get("params", {}))
+    _svc("audit").write("system", "tool_execute", body.get("tool_name", ""))
+    return result
 
 
-@router.get("/topology")
-def topology():
-    return {
-        "nodes": [
-            {"id": "user", "label": "用户入口", "group": "edge"},
-            {"id": "gateway", "label": "API Gateway", "group": "app"},
-            {"id": "order", "label": "order-service", "group": "app"},
-            {"id": "redis", "label": "Redis", "group": "cache"},
-            {"id": "mysql", "label": "MySQL", "group": "database"},
-            {"id": "agent", "label": "TonamiIbuki Agent", "group": "aiops"},
-        ],
-        "edges": [
-            {"source": "user", "target": "gateway"},
-            {"source": "gateway", "target": "order"},
-            {"source": "order", "target": "redis"},
-            {"source": "order", "target": "mysql"},
-            {"source": "agent", "target": "order"},
-            {"source": "agent", "target": "mysql"},
-        ],
-    }
+@router.post("/tools/kubectl/{action}")
+async def kubectl_action(action: str, req: Request):
+    body = await req.json() if await req.body() else {}
+    result = _svc("tools").execute(f"kubectl_{action}", body.get("params", body))
+    _svc("audit").write("system", "tool_execute", f"kubectl_{action}")
+    return result
 
 
-@router.post("/rag/query")
-def query_rag(request: RAGQuery):
-    return rag_service.query(request)
+@router.post("/tools/ansible/{action}")
+async def ansible_action(action: str, req: Request):
+    body = await req.json() if await req.body() else {}
+    result = _svc("tools").execute(f"ansible_{action}", body.get("params", body))
+    _svc("audit").write("system", "tool_execute", f"ansible_{action}")
+    return result
 
 
-@router.post("/rag/import")
-def import_knowledge(request: KnowledgeImportRequest):
-    return rag_service.import_document(request)
+@router.post("/tools/ssh/{action}")
+async def ssh_action(action: str, req: Request):
+    body = await req.json() if await req.body() else {}
+    result = _svc("tools").execute(f"ssh_{action}", body.get("params", body))
+    _svc("audit").write("system", "tool_execute", f"ssh_{action}")
+    return result
 
 
-@router.post("/rag/bulk-import")
-def bulk_import_knowledge(request: KnowledgeBulkImportRequest):
-    return rag_service.bulk_import(request)
-
-
-@router.post("/rag/evaluate")
-def evaluate_rag(items: list[RAGEvalItem], top_k: int = 5):
-    return rag_service.evaluate(items, top_k=top_k)
-
-
-@router.post("/rag/reload")
-def reload_knowledge():
-    return {"total_documents": rag_service.reload()}
-
-
-@router.get("/rag/vector-index")
-def vector_index_status():
-    return chroma_vector_index.status()
-
-
-@router.get("/rag/embedding-status")
-def embedding_status():
-    return embedding_service.status()
-
-
-@router.get("/rag/reranker-status")
-def reranker_status():
-    return reranker_service.status()
-
-
-@router.get("/diagnosis/phases")
-def list_phases():
-    """Return all diagnosis phases with owner and description for UI display."""
-    return {
-        "phases": [
-            {
-                "name": phase.value,
-                "owner": PHASE_OWNERS.get(phase, ""),
-                "description": PHASE_DESCRIPTIONS.get(phase, ""),
-            }
-            for phase in Phase
-        ]
-    }
-
-
+# ---------------------------------------------------------------------------
+# Cases
+# ---------------------------------------------------------------------------
 @router.get("/cases")
-def list_cases():
-    return case_service.list()
+async def list_cases(limit: int = Query(20, ge=1, le=100)):
+    cases = _svc("cases").list()
+    return {"cases": cases[:limit]}
 
 
 @router.post("/cases")
-def add_case(request: CaseRecord):
-    return case_service.add(request)
+async def create_case(req: Request):
+    body = await req.json()
+    from uuid import uuid4
+    record = CaseRecord(
+        title=body.get("title", ""),
+        category=body.get("category", "general"),
+        root_cause=body.get("root_cause", body.get("description", "")),
+        resolution=body.get("resolution", ""),
+        status=body.get("status", "draft"),
+    )
+    # Preserve case_id if provided, otherwise auto-generated
+    if body.get("id"):
+        record.case_id = body["id"]
+    case = _svc("cases").add(record)
+    _svc("audit").write("system", "case_create", case.case_id)
+    return case.model_dump(mode="json")
 
 
-@router.get("/audit/logs")
-def list_audit_logs(limit: int = 100, actor: str | None = None, action: str | None = None, target: str | None = None):
-    return audit_service.query(limit=limit, actor=actor, action=action, target=target)
+@router.get("/cases/{case_id}")
+async def get_case(case_id: str):
+    cases = _svc("cases").list()
+    for c in cases:
+        if c.case_id == case_id:
+            return c.model_dump(mode="json")
+    raise HTTPException(status_code=404, detail="Case not found")
 
 
 # ---------------------------------------------------------------------------
-# RBAC endpoints
+# RAG / Knowledge base
 # ---------------------------------------------------------------------------
+@router.get("/rag/search")
+async def rag_search(q: str = Query(..., min_length=1), top_k: int = Query(5, ge=1, le=20)):
+    result = _svc("rag").query(RAGQuery(query=q, top_k=top_k))
+    citations = result.citations if hasattr(result, "citations") else []
+    return {"query": q, "results": [c.model_dump(mode="json") for c in citations]}
 
-@router.get("/rbac/status")
-def rbac_status():
-    return rbac_service.status()
+
+@router.get("/rag/status")
+async def rag_status():
+    return _svc("rag").get_status()
 
 
+# ---------------------------------------------------------------------------
+# Embedding & Reranker
+# ---------------------------------------------------------------------------
+@router.get("/embedding/status")
+async def embedding_status():
+    from src.services.embedding_service import EmbeddingService
+    svc = EmbeddingService()
+    return svc.status()
+
+
+@router.get("/reranker/status")
+async def reranker_status():
+    from src.services.reranker_service import RerankerService
+    svc = RerankerService()
+    return svc.status()
+
+
+# ---------------------------------------------------------------------------
+# Phase management
+# ---------------------------------------------------------------------------
+@router.get("/phases")
+async def get_phases():
+    pm: PhaseManager = _svc("phase")
+    return pm.snapshot()
+
+
+@router.post("/phases/advance")
+async def advance_phase(req: Request):
+    from src.services.phasemanager import Phase
+    body = await req.json()
+    target = body.get("phase", "")
+    pm: PhaseManager = _svc("phase")
+    try:
+        # Accept both string and Phase enum (case-insensitive)
+        if isinstance(target, str):
+            target_lower = target.lower()
+            # Find matching phase by lowercased value
+            target_phase = None
+            for p in Phase:
+                if p.value == target_lower:
+                    target_phase = p
+                    break
+            if target_phase is None:
+                raise ValueError(f"Unknown phase: {target}")
+        else:
+            target_phase = target
+        pm.jump_to(target_phase)
+        _svc("audit").write("system", "phase_advance", target_phase.value)
+        return pm.snapshot()
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# RBAC
+# ---------------------------------------------------------------------------
 @router.get("/rbac/users")
-def list_rbac_users():
-    return rbac_service.list_users()
+async def list_users():
+    return {"users": _svc("rbac").list_users()}
 
 
 @router.post("/rbac/users")
-def create_rbac_user(request: dict):
-    username = request.get("username", "")
-    password = request.get("password", "")
-    role_str = request.get("role", "viewer")
+async def create_user(req: UserCreate):
+    from src.services.rbac_service import Role
     try:
-        role = Role(role_str)
+        role = Role(req.role)
     except ValueError:
-        return JSONResponse(status_code=400, content={"error": f"Invalid role: {role_str}"})
-    user = rbac_service.create_user(username, password, role)
+        raise HTTPException(status_code=400, detail=f"Invalid role: {req.role}")
+    user = _svc("rbac").create_user(req.username, req.password, role)
     if not user:
-        return JSONResponse(status_code=409, content={"error": f"User {username} already exists"})
-    return {
-        "username": user.username,
-        "role": user.role.value,
-        "token": user.token_hash,  # plain token returned once
-        "created_at": user.created_at,
-    }
-
-
-@router.put("/rbac/users/{username}/role")
-def update_rbac_role(username: str, request: dict):
-    role_str = request.get("role", "")
-    try:
-        role = Role(role_str)
-    except ValueError:
-        return JSONResponse(status_code=400, content={"error": f"Invalid role: {role_str}"})
-    if not rbac_service.update_role(username, role):
-        return JSONResponse(status_code=404, content={"error": f"User {username} not found"})
-    return {"username": username, "role": role.value}
-
-
-@router.post("/rbac/users/{username}/token")
-def regenerate_rbac_token(username: str):
-    token = rbac_service.regenerate_token(username)
-    if not token:
-        return JSONResponse(status_code=404, content={"error": f"User {username} not found"})
-    return {"username": username, "token": token}
+        return JSONResponse(status_code=409, content={"detail": "User already exists"})
+    _svc("audit").write("system", "user_create", req.username)
+    return {"username": user.username, "role": user.role.value, "token": user.token_hash}
 
 
 @router.delete("/rbac/users/{username}")
-def delete_rbac_user(username: str):
-    if not rbac_service.delete_user(username):
-        return JSONResponse(status_code=404, content={"error": f"User {username} not found"})
-    return {"deleted": username}
+async def delete_user(username: str):
+    ok = _svc("rbac").delete_user(username)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+    _svc("audit").write("system", "user_delete", username)
+    return {"detail": "deleted"}
+
+
+@router.post("/rbac/token")
+async def create_token(req: TokenRequest):
+    token = _svc("rbac").create_token(req.username, req.password)
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"token": token}
+
+
+# ---------------------------------------------------------------------------
+# Evaluation
+# ---------------------------------------------------------------------------
+@router.get("/evaluation")
+async def run_evaluation():
+    metrics = await _svc("evaluation").evaluate()
+    return {"summary": metrics.summary, "queries": metrics.queries}
+
+
+@router.get("/evaluation/queries")
+async def list_eval_queries():
+    queries = _svc("evaluation").load_test_queries()
+    return {"queries": queries, "count": len(queries)}
+
+
+# ---------------------------------------------------------------------------
+# Audit
+# ---------------------------------------------------------------------------
+@router.get("/audit")
+async def list_audit(limit: int = Query(50, ge=1, le=200)):
+    return {"entries": [e.model_dump(mode="json") for e in _svc("audit").list(limit)]}

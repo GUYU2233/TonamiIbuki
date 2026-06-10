@@ -19,7 +19,7 @@ class ChromaVectorIndex:
     """Persistent ChromaDB vector index for knowledge base documents."""
 
     def __init__(self) -> None:
-        persist_dir = str(Path(settings.KB_PATH).parent / "chroma_db")
+        persist_dir = str(Path(settings.VECTOR_STORE_PATH))
         self._client = chromadb.PersistentClient(
             path=persist_dir,
             settings=ChromaSettings(anonymized_telemetry=False),

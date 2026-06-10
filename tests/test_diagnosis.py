@@ -19,7 +19,8 @@ def test_high_risk_diagnosis_waits_for_approval(anyio_backend):
             host="prod-app-01",
             service="order-service",
             description="timeout acquiring connection",
-        )
+        ),
+        auto_execute=True,
     )
     events = anyio.run(collect_events, request)
     assert events[-1].status == "waiting_approval"
