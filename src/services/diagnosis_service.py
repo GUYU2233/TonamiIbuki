@@ -118,6 +118,9 @@ class DiagnosisService:
             # Fallback: build report from events
             session.report = self._build_report(session)
             self._persist(session)
+        # Auto-convert to case
+        if session and session.state == SessionState.completed:
+            self.convert_to_case(last_session_id)
         return session
 
     def evidence_chain(self, session_id: str) -> dict:
