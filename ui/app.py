@@ -4,7 +4,11 @@ import streamlit as st
 import requests
 import json
 import time
+import sys, os
 from datetime import datetime, timezone
+
+# Ensure /app is on Python path (for Docker)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 st.set_page_config(
     page_title="TonamiIbuki · AIOps",
