@@ -33,7 +33,6 @@ from ui.components import (
 # --- Constants ---
 API_BASE = os.getenv("API_BASE", "http://backend:8000")
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -46,22 +45,19 @@ def _api_get(path: str) -> dict | None:
         pass
     return None
 
-
 def _api_post(path: str, payload: dict) -> dict | None:
     try:
         r = requests.post(f"{API_BASE}{path}", json=payload, timeout=30)
         if r.status_code == 200:
             return r.json()
-        st.error(f"API 错误 ({r.status_code}): {r.text[:300]}")
+        st.error(f"API error ({r.status_code}): {r.text[:300]}")
     except Exception as e:
-        st.error(f"连接后端失败: {e}")
+        st.error(f"Backend connection failed: {e}")
     return None
-
 
 @st.cache_data(ttl=10)
 def fetch_status() -> dict:
     return _api_get("/health") or {}
-
 
 def fetch_tools() -> list[dict]:
     data = _api_get("/api/tools")
@@ -69,13 +65,11 @@ def fetch_tools() -> list[dict]:
         return data.get("tools", [])
     return []
 
-
 def fetch_cases(limit: int = 20) -> list[dict]:
     data = _api_get(f"/api/cases?limit={limit}")
     if isinstance(data, dict):
         return data.get("cases", [])
     return []
-
 
 def fetch_users() -> list[dict]:
     data = _api_get("/api/rbac/users")
@@ -83,58 +77,57 @@ def fetch_users() -> list[dict]:
         return data.get("users", [])
     return []
 
-
 # ---------------------------------------------------------------------------
 # sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.image("ui/icon.png", width=80)
     st.title("TonamiIbuki")
-    st.caption("企业 IT 运维 AIOps 智能体")
+    st.caption("Enterprise IT Operations AIOps Agent")
 
     status = fetch_status()
     if status:
-        st.success(f"✅ 后端在线 · v{status.get('version', '?')}")
+        st.success(f"Backend Online · v{status.get('version', '?')}")
     else:
-        st.error("❌ 后端离线")
+        st.error("Backend Offline")
 
     st.divider()
 
     page = st.radio(
-        "导航",
+        "Navigation",
         [
-            "🏠 总览仪表板",
-            "🔧 诊断中心",
-            "📋 案例库",
-            "🛠️ 工具管理",
-            "📊 系统拓扑",
-            "👥 用户管理",
+            "Dashboard",
+            "Diagnosis",
+            "Case Library",
+            "Tool Management",
+            "System Topology",
+            "User Management",
         ],
     )
 
     st.divider()
-    st.caption(f"© 2024 TonamiIbuki · {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    st.caption(f"(c) 2024 TonamiIbuki · {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
 
 # ---------------------------------------------------------------------------
-# Page: 总览仪表板
+# Page: Dashboard
 # ---------------------------------------------------------------------------
-if page == "🏠 总览仪表板":
-    st.title("🏠 总览仪表板")
+if page == "Dashboard":
+    st.title("Dashboard")
 
     # Metrics row
     c1, c2, c3, c4, c5 = st.columns(5)
     cases = fetch_cases()
     tools = fetch_tools()
-    c1.metric("📋 案例总数", len(cases))
-    c2.metric("🛠️ 工具数", len(tools))
-    c3.metric("📚 知识条目", status.get("kb_docs", "?"))
-    c4.metric("⚙️ LLM", status.get("llm_provider", "?"))
-    c5.metric("📦 向量存储", status.get("vector_store", "?"))
+    c1.metric("Cases", len(cases))
+    c2.metric("Tools", len(tools))
+    c3.metric("Knowledge Entries", status.get("kb_docs", "?"))
+    c4.metric("LLM Provider", status.get("llm_provider", "?"))
+    c5.metric("Vector Store", status.get("vector_store", "?"))
 
     st.divider()
 
     # Risk summary
-    st.subheader("📊 风险概览")
+    st.subheader("Risk Overview")
     risk_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     for case in cases:
         level = case.get("risk_level", "info")
@@ -143,11 +136,11 @@ if page == "🏠 总览仪表板":
     render_risk_bar(risk_counts)
 
     # Recent cases
-    st.subheader("📋 最近案例")
+    st.subheader("Recent Cases")
     if cases:
         for case in cases[:5]:
             with st.expander(
-                f"{case.get('id', '?')[:8]} — {case.get('title', '无标题')}  "
+                f"{case.get('id', '?')[:8]} — {case.get('title', 'Untitled')}  "
                 f"({case.get('created_at', '')[:10]})",
             ):
                 c1, c2 = st.columns([2, 1])
@@ -155,42 +148,42 @@ if page == "🏠 总览仪表板":
                     st.text(case.get("description", "")[:500])
                 with c2:
                     show_risk_badge(case.get("risk_level", "info"))
-                    st.caption(f"状态: {case.get('status', '?')}")
-                    st.caption(f"阶段: {case.get('phase', '?')}")
+                    st.caption(f"Status: {case.get('status', '?')}")
+                    st.caption(f"Phase: {case.get('phase', '?')}")
     else:
-        st.info("暂无案例 — 前往「诊断中心」创建第一个诊断")
+        st.info("No cases yet — go to Diagnosis to create one")
 
     # Phase indicator demo
     st.divider()
-    st.subheader("⏳ 系统阶段")
+    st.subheader("System Phase")
     render_phase_indicator("ANALYSIS")
 
 # ---------------------------------------------------------------------------
-# Page: 诊断中心
+# Page: Diagnosis
 # ---------------------------------------------------------------------------
-elif page == "🔧 诊断中心":
-    st.title("🔧 诊断中心")
+elif page == "Diagnosis":
+    st.title("Diagnosis")
 
     # Input form
     with st.form("diagnosis_form"):
-        title = st.text_input("标题", placeholder="例如：生产环境 Nginx 502 错误")
+        title = st.text_input("Title", placeholder="e.g. Production Nginx 502 Error")
         description = st.text_area(
-            "故障描述",
-            placeholder="请详细描述故障现象、影响范围、发生时间等...",
+            "Description",
+            placeholder="Describe the incident: symptoms, impact scope, occurrence time...",
             height=120,
         )
         c1, c2, c3 = st.columns(3)
         with c1:
-            severity = st.selectbox("严重程度", ["low", "medium", "high", "critical"], index=1)
+            severity = st.selectbox("Severity", ["low", "medium", "high", "critical"], index=1)
         with c2:
-            env = st.selectbox("环境", ["production", "staging", "development"], index=0)
+            env = st.selectbox("Environment", ["production", "staging", "development"], index=0)
         with c3:
-            use_rag = st.checkbox("启用 RAG 检索", value=True)
+            use_rag = st.checkbox("Enable RAG Retrieval", value=True)
 
-        submitted = st.form_submit_button("🚀 开始诊断", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Start Diagnosis", type="primary", use_container_width=True)
 
     if submitted and title and description:
-        with st.spinner("正在诊断..."):
+        with st.spinner("Diagnosing..."):
             result = _api_post("/api/diagnose", {
                 "title": title,
                 "description": description,
@@ -200,7 +193,7 @@ elif page == "🔧 诊断中心":
             })
 
         if result:
-            st.success("诊断完成！")
+            st.success("Diagnosis complete.")
 
             # Phase indicator
             phase = result.get("phase", "ANALYSIS")
@@ -209,16 +202,16 @@ elif page == "🔧 诊断中心":
             st.divider()
 
             # Root cause
-            st.subheader("🔍 根因分析")
+            st.subheader("Root Cause Analysis")
             root_cause = result.get("root_cause", {})
             c1, c2 = st.columns([3, 1])
             with c1:
-                st.markdown(root_cause.get("summary", "无"))
+                st.markdown(root_cause.get("summary", "None"))
             with c2:
                 show_risk_badge(root_cause.get("risk_level", severity))
 
             # Evidence timeline
-            st.subheader("📋 证据时间线")
+            st.subheader("Evidence Timeline")
             evidence = result.get("evidence", [])
             render_evidence_summary(evidence)
             render_evidence_timeline(evidence, max_items=15)
@@ -226,15 +219,15 @@ elif page == "🔧 诊断中心":
             # RAG results
             rag_results = result.get("rag_results", [])
             if rag_results:
-                st.subheader("📚 知识库匹配")
+                st.subheader("Knowledge Base Matches")
                 for doc in rag_results[:5]:
-                    with st.expander(f"📄 {doc.get('title', '?')} (score: {doc.get('score', 0):.2f})"):
+                    with st.expander(f"Doc: {doc.get('title', '?')} (score: {doc.get('score', 0):.2f})"):
                         st.text(doc.get("content", "")[:500])
 
             # Tool executions
             tool_runs = result.get("tool_runs", [])
             if tool_runs:
-                st.subheader("⚡ 工具执行记录")
+                st.subheader("Tool Execution Log")
                 for tr in tool_runs:
                     render_tool_card(
                         tool_name=tr.get("tool_name", "unknown"),
@@ -247,94 +240,93 @@ elif page == "🔧 诊断中心":
                     )
 
             # Fix plan
-            st.subheader("📋 修复方案")
+            st.subheader("Remediation Plan")
             fix_plan = result.get("fix_plan", {})
             steps = fix_plan.get("steps", [])
             if steps:
                 for i, step in enumerate(steps, 1):
                     st.markdown(f"{i}. {step}")
             else:
-                st.text(fix_plan.get("summary", "暂无修复方案"))
+                st.text(fix_plan.get("summary", "No remediation plan available"))
 
             # Report
             report = result.get("report", "")
             if report:
-                st.subheader("📝 诊断报告")
+                st.subheader("Diagnosis Report")
                 st.markdown(report)
 
             # Phase stepper for manual advance
             st.divider()
             new_phase = render_phase_stepper(phase)
             if new_phase:
-                st.info(f"阶段已切换: {phase} → {new_phase}")
-                # In a real app this would call the backend to update
+                st.info(f"Phase switched: {phase} -> {new_phase}")
 
 # ---------------------------------------------------------------------------
-# Page: 案例库
+# Page: Case Library
 # ---------------------------------------------------------------------------
-elif page == "📋 案例库":
-    st.title("📋 案例库")
+elif page == "Case Library":
+    st.title("Case Library")
 
     cases = fetch_cases()
     if not cases:
-        st.info("暂无案例")
+        st.info("No cases yet")
     else:
         # Filter bar
         c1, c2 = st.columns(2)
         with c1:
-            search = st.text_input("🔍 搜索案例", placeholder="关键词...")
+            search = st.text_input("Search cases", placeholder="Keyword...")
         with c2:
-            status_filter = st.selectbox("状态筛选", ["全部", "open", "in_progress", "resolved", "closed"])
+            status_filter = st.selectbox("Status filter", ["All", "open", "in_progress", "resolved", "closed"])
 
         filtered = cases
         if search:
             filtered = [c for c in filtered if search.lower() in json.dumps(c, ensure_ascii=False).lower()]
-        if status_filter != "全部":
+        if status_filter != "All":
             filtered = [c for c in filtered if c.get("status") == status_filter]
 
-        st.caption(f"共 {len(filtered)} 条记录")
+        st.caption(f"{len(filtered)} records")
 
         for case in filtered:
             with st.container():
                 c1, c2, c3 = st.columns([3, 1, 1])
                 with c1:
-                    st.markdown(f"**{case.get('title', '无标题')}**")
+                    st.markdown(f"**{case.get('title', 'Untitled')}**")
                     st.caption(case.get("description", "")[:120])
                 with c2:
                     show_risk_badge(case.get("risk_level", "info"))
                 with c3:
-                    st.caption(f"🕐 {case.get('created_at', '')[:10]}")
+                    st.caption(f"{case.get('created_at', '')[:10]}")
                 st.divider()
 
 # ---------------------------------------------------------------------------
-# Page: 工具管理
+# Page: Tool Management
 # ---------------------------------------------------------------------------
-elif page == "🛠️ 工具管理":
-    st.title("🛠️ 工具管理")
+elif page == "Tool Management":
+    st.title("Tool Management")
 
     tools = fetch_tools()
 
     # Tool grid
-    st.subheader("已注册工具")
+    st.subheader("Registered Tools")
     render_tool_grid(tools, cols=2)
 
     # Tool execution demo
     st.divider()
-    st.subheader("⚡ 工具执行测试")
+    st.subheader("Tool Execution Test")
 
     if tools:
         tool_names = [t.get("name", str(i)) for i, t in enumerate(tools)]
-        selected_tool = st.selectbox("选择工具", tool_names)
-        test_params = st.text_input("参数 (JSON)", placeholder='{"key": "value"}')
+        selected_tool = st.selectbox("Select tool", tool_names)
+        test_params = st.text_input("Parameters (JSON)", placeholder='{"key": "value"}')
 
-        if st.button("▶️ 执行", use_container_width=True):
+        if st.button("Execute", use_container_width=True):
             try:
                 params = json.loads(test_params) if test_params.strip() else {}
             except json.JSONDecodeError:
-                st.error("JSON 格式错误")
+                st.error("Invalid JSON format")
                 params = {}
 
-            with st.spinner("执行中..."):
+            with st.spinner("Executing..."):
                 result = _api_post("/api/tools/execute", {
                     "tool_name": selected_tool,
                     "params": params,
@@ -353,24 +345,24 @@ elif page == "🛠️ 工具管理":
                 )
 
 # ---------------------------------------------------------------------------
-# Page: 系统拓扑
+# Page: System Topology
 # ---------------------------------------------------------------------------
-elif page == "📊 系统拓扑":
-    st.title("📊 系统拓扑")
+elif page == "System Topology":
+    st.title("System Topology")
 
-    st.caption("服务架构与依赖关系")
+    st.caption("Service architecture and dependencies")
 
     # Render default topology
     render_topology()
 
     st.divider()
-    st.subheader("📡 服务端点")
+    st.subheader("Service Endpoints")
 
     services = [
-        {"name": "FastAPI Backend", "url": API_BASE, "status": "✅" if status else "❌"},
-        {"name": "Streamlit Frontend", "url": "http://127.0.0.1:8080", "status": "✅"},
-        {"name": "ChromaDB", "url": "persistent://data/chroma_db", "status": "✅" if status.get("vector_store") else "❌"},
-        {"name": "SQLite", "url": "data/tonamiibuki.db", "status": "✅"},
+        {"name": "FastAPI Backend", "url": API_BASE, "status": "Online" if status else "Offline"},
+        {"name": "Streamlit Frontend", "url": "http://127.0.0.1:8080", "status": "Online"},
+        {"name": "ChromaDB", "url": "persistent://data/chroma_db", "status": "Online" if status.get("vector_store") else "Offline"},
+        {"name": "SQLite", "url": "data/tonamiibuki.db", "status": "Online"},
     ]
 
     for svc in services:
@@ -384,41 +376,41 @@ elif page == "📊 系统拓扑":
 
     # API docs link
     st.divider()
-    st.markdown(f"[📖 OpenAPI Docs]({API_BASE}/docs)")
+    st.markdown(f"[OpenAPI Docs]({API_BASE}/docs)")
 
 # ---------------------------------------------------------------------------
-# Page: 用户管理
+# Page: User Management
 # ---------------------------------------------------------------------------
-elif page == "👥 用户管理":
-    st.title("👥 用户管理")
+elif page == "User Management":
+    st.title("User Management")
 
     users = fetch_users()
 
     if users:
-        st.subheader(f"用户列表 ({len(users)})")
+        st.subheader(f"Users ({len(users)})")
         for u in users:
             c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
             with c1:
                 st.markdown(f"**{u.get('username', '?')}**")
             with c2:
-                st.caption(f"角色: {u.get('role', '?')}")
+                st.caption(f"Role: {u.get('role', '?')}")
             with c3:
                 enabled = u.get("enabled", True)
-                st.caption("✅ 启用" if enabled else "🚫 禁用")
+                st.caption("Enabled" if enabled else "Disabled")
             with c4:
-                st.caption(f"创建: {u.get('created_at', '')[:10]}")
+                st.caption(f"Created: {u.get('created_at', '')[:10]}")
     else:
-        st.info("暂无用户 — 请先通过 API 创建用户")
+        st.info("No users — create one via the API first")
 
     st.divider()
 
     # Add user form
-    st.subheader("➕ 添加用户")
+    st.subheader("Add User")
     with st.form("add_user_form"):
-        new_username = st.text_input("用户名")
-        new_password = st.text_input("密码", type="password")
-        new_role = st.selectbox("角色", ["operator", "viewer"])
-        if st.form_submit_button("创建用户", use_container_width=True):
+        new_username = st.text_input("Username")
+        new_password = st.text_input("Password", type="password")
+        new_role = st.selectbox("Role", ["operator", "viewer"])
+        if st.form_submit_button("Create User", use_container_width=True):
             if new_username and new_password:
                 result = _api_post("/api/rbac/users", {
                     "username": new_username,
@@ -426,7 +418,7 @@ elif page == "👥 用户管理":
                     "role": new_role,
                 })
                 if result:
-                    st.success(f"用户 {new_username} 创建成功")
+                    st.success(f"User {new_username} created")
                     st.rerun()
             else:
-                st.warning("请填写用户名和密码")
+                st.warning("Username and password required")

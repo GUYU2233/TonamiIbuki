@@ -3,33 +3,21 @@
 import streamlit as st
 import graphviz
 
-
 def _build_default_topology() -> graphviz.Digraph:
-    """Build a default service topology graph."""
     dot = graphviz.Digraph("topology", format="svg")
     dot.attr(rankdir="LR", bgcolor="transparent")
     dot.attr("node", shape="box", style="rounded,filled", fontname="sans-serif", fontsize="11")
     dot.attr("edge", fontname="sans-serif", fontsize="9", color="#888888")
 
-    # User / External
-    dot.node("user", "👤 User", shape="plaintext", fontsize="13")
+    dot.node("user", "User", shape="plaintext", fontsize="13")
+    dot.node("lb", "Nginx LB\n:80/:443", fillcolor="#e3f2fd", color="#1976d2")
+    dot.node("api", "FastAPI\n:8000", fillcolor="#e8f5e9", color="#388e3c")
+    dot.node("streamlit", "Streamlit\n:8080", fillcolor="#fff3e0", color="#f57c00")
+    dot.node("chromadb", "ChromaDB\nvector store", fillcolor="#fce4ec", color="#c62828")
+    dot.node("sqlite", "SQLite\npersistence", fillcolor="#f3e5f5", color="#7b1fa2")
+    dot.node("kb", "Knowledge Base", fillcolor="#e0f7fa", color="#00695c")
+    dot.node("llm", "LLM API\n(OpenAI/Ollama)", fillcolor="#fff9c4", color="#f9a825")
 
-    # LB / Proxy
-    dot.node("lb", "🔀 Nginx LB\n:80/:443", fillcolor="#e3f2fd", color="#1976d2")
-
-    # Backend services
-    dot.node("api", "⚙️ FastAPI\n:8000", fillcolor="#e8f5e9", color="#388e3c")
-    dot.node("streamlit", "🖥️ Streamlit\n:8080", fillcolor="#fff3e0", color="#f57c00")
-
-    # Data services
-    dot.node("chromadb", "🗄️ ChromaDB\nvector store", fillcolor="#fce4ec", color="#c62828")
-    dot.node("sqlite", "📦 SQLite\npersistence", fillcolor="#f3e5f5", color="#7b1fa2")
-    dot.node("kb", "📚 Knowledge\nBase", fillcolor="#e0f7fa", color="#00695c")
-
-    # External LLM
-    dot.node("llm", "🧠 LLM API\n(OpenAI/Ollama)", fillcolor="#fff9c4", color="#f9a825")
-
-    # Edges
     dot.edge("user", "lb")
     dot.edge("lb", "streamlit", "Web UI")
     dot.edge("lb", "api", "REST API")
@@ -41,15 +29,7 @@ def _build_default_topology() -> graphviz.Digraph:
 
     return dot
 
-
 def render_topology(edges: list[dict] | None = None, nodes: list[dict] | None = None) -> None:
-    """Render a service topology graph.
-
-    Args:
-        edges: Optional list of edge dicts {source, target, label}.
-        nodes: Optional list of node dicts {id, label, fillcolor, color, shape}.
-               If omitted, a default topology is rendered.
-    """
     if nodes is None and edges is None:
         dot = _build_default_topology()
     else:
