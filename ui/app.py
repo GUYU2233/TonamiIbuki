@@ -33,6 +33,17 @@ from ui.components import (
 # --- Constants ---
 API_BASE = os.getenv("API_BASE", "http://backend:8000")
 
+STATUS_MAP = {
+    "draft": "草稿",
+    "open": "待处理",
+    "in_progress": "处理中",
+    "resolved": "已解决",
+    "closed": "已关闭",
+}
+
+def _status_label(s: str) -> str:
+    return STATUS_MAP.get(s, s)
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -150,7 +161,7 @@ if page == "仪表盘":
                     st.text((case.get("root_cause") or "")[:500])
                 with c2:
                     show_risk_badge(case.get("category", "info"))
-                    st.caption(f"状态: {case.get('status', '?')}")
+                    st.caption(f"状态: {_status_label(case.get('status', ''))}")
     else:
         st.info("暂无案例 — 前往「智能诊断」创建")
 
@@ -277,7 +288,7 @@ elif page == "案例库":
         with c1:
             search = st.text_input("搜索案例", placeholder="输入关键词...")
         with c2:
-            status_filter = st.selectbox("状态筛选", ["全部", "open", "in_progress", "resolved", "closed"])
+            status_filter = st.selectbox("状态筛选", ["全部", "draft", "open", "in_progress", "resolved", "closed"], format_func=_status_label)
 
         filtered = cases
         if search:
