@@ -23,6 +23,13 @@ def _normalize(level: str) -> str:
         "yellow": "medium",
         "green": "low",
         "blue": "info",
+        "general": "info",
+        "network": "medium",
+        "database": "high",
+        "compute": "high",
+        "storage": "medium",
+        "security": "critical",
+        "kubernetes": "high",
     }
     return aliases.get(level, "unknown")
 
