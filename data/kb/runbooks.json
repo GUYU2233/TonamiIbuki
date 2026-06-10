@@ -1,0 +1,153 @@
+[
+  {
+    "doc_id": "kb-db-104",
+    "title": "ERROR-DB-104 数据库连接池耗尽处理",
+    "source": "runbook/db_pool.md",
+    "content": "现象：应用日志出现 ERROR-DB-104、timeout acquiring connection 或连接池 active 接近 max。排查：检查慢 SQL、长事务、数据库连接数、应用连接池配置。处置：先降级非核心流量，扩容连接池或实例，kill 长事务，补索引，观察 p95 延迟和 error rate。高风险动作如 kill session 需要审批。",
+    "tags": [
+      "database",
+      "ERROR-DB-104",
+      "connection-pool"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-k8s-crashloop",
+    "title": "Kubernetes CrashLoopBackOff 排查流程",
+    "source": "runbook/k8s_crashloop.md",
+    "content": "CrashLoopBackOff 通常由启动命令错误、配置缺失、探针失败或依赖不可达导致。先 kubectl describe pod 查看 Events，再 kubectl logs --previous 查看上一次崩溃日志。修复建议包括回滚镜像、补齐 ConfigMap/Secret、调整探针阈值。",
+    "tags": [
+      "kubernetes",
+      "pod",
+      "CrashLoopBackOff"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-disk-90",
+    "title": "Linux 磁盘使用率超过 90% 应急处理",
+    "source": "runbook/linux_disk.md",
+    "content": "磁盘空间告警需先确认分区、目录占用和增长速度。常用命令包括 df -h、du -sh、lsof | grep deleted。处置包括清理临时文件、归档日志、修复 logrotate。删除生产文件属于中高风险操作，应保留证据。",
+    "tags": [
+      "linux",
+      "disk",
+      "logrotate"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-redis-latency",
+    "title": "Redis 延迟升高诊断",
+    "source": "runbook/redis_latency.md",
+    "content": "Redis 延迟升高可能来自 big key、慢查询、内存淘汰、网络抖动或持久化阻塞。排查 slowlog、latency doctor、used_memory、evicted_keys。临时处置可限流热点 key，扩容分片，谨慎执行删除大 key。",
+    "tags": [
+      "redis",
+      "latency",
+      "cache"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-ops-manual",
+    "title": "运维操作手册 - 服务启停与监控",
+    "source": "runbook/ops_manual.md",
+    "content": "## 服务管理\n- Nginx: systemctl start/stop/restart nginx, 重载配置 nginx -s reload\n- Docker: docker start/stop/restart <container>, docker-compose up/down\n- K8s: kubectl scale deployment <name> --replicas=<n>, kubectl rollout restart deployment <name>\n\n## 监控指标\n- CPU: 使用率 < 80%, load average < CPU核心数*0.7\n- 内存: 使用率 < 85%, swap < 10%\n- 磁盘: 使用率 < 85%, iowait < 10%\n- 网络: 丢包率 < 0.1%, 延迟 < 5ms (内网)\n\n## 告警级别\n- P0 Critical: 核心服务不可用, 立即响应\n- P1 High: 性能严重下降, 15分钟响应\n- P2 Medium: 非核心异常, 1小时响应\n- P3 Low: 预警通知, 工作时间处理",
+    "tags": [
+      "ops",
+      "monitor",
+      "nginx",
+      "docker",
+      "kubernetes"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-troubleshooting",
+    "title": "故障排查 SOP - CPU/内存/磁盘/网络",
+    "source": "runbook/troubleshooting_guide.md",
+    "content": "## CPU 过高排查 SOP\n1. top/htop 确认高 CPU 进程 PID\n2. perf top -p <PID> 查看热点函数\n3. 检查 GC 频率、死循环、正则回溯\n4. 处置: 限制资源、优化代码、扩容\n\n## 内存泄漏排查 SOP\n1. free -h 确认内存使用\n2. pmap -x <PID> 查看进程内存映射\n3. jmap -histo <PID> (Java) 分析对象分布\n4. 处置: 重启服务、修复内存泄漏、增加内存\n\n## 磁盘 I/O 排查 SOP\n1. iostat -x 1 查看磁盘利用率\n2. iotop 定位高 I/O 进程\n3. lsof 检查大文件写入\n4. 处置: 清理日志、优化 I/O、迁移数据\n\n## 网络故障排查 SOP\n1. ping/traceroute 测试连通性\n2. ss -tlnp 检查端口监听\n3. tcpdump 抓包分析\n4. 处置: 检查防火墙、修复 DNS、调整超时",
+    "tags": [
+      "troubleshooting",
+      "cpu",
+      "memory",
+      "disk",
+      "network",
+      "SOP"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-config-templates",
+    "title": "配置模板 - Nginx/Docker/K8s",
+    "source": "runbook/config_templates.md",
+    "content": "## Nginx 反向代理配置\nupstream backend { server 127.0.0.1:3000 max_fails=3 fail_timeout=30s; }\nserver { listen 80; location / { proxy_pass http://backend; proxy_connect_timeout 5s; } }\n\n## Docker Compose 模板\nservices:\n  app:\n    image: myapp:latest\n    ports: [\"8080:8080\"]\n    restart: always\n    healthcheck: { test: [\"CMD\", \"curl -f http://localhost:8080/health\"], interval: 30s }\n\n## K8s Deployment 模板\napiVersion: apps/v1\nkind: Deployment\nspec:\n  replicas: 3\n  selector: { matchLabels: { app: myapp } }\n  template:\n    spec:\n      containers:\n      - name: app\n        image: myapp:latest\n        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }\n        livenessProbe: { httpGet: { path: /health, port: 8080 }, initialDelaySeconds: 15 }\n        readinessProbe: { httpGet: { path: /ready, port: 8080 }, initialDelaySeconds: 5 }",
+    "tags": [
+      "config",
+      "nginx",
+      "docker",
+      "kubernetes",
+      "template"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-security-policy",
+    "title": "安全策略 - 访问控制与变更管理",
+    "source": "runbook/security_policy.md",
+    "content": "## 访问控制\n- 最小权限原则: 运维人员仅授予所需最小权限\n- 多因素认证: 生产环境强制 MFA\n- 堡垒机: 所有 SSH 操作通过堡垒机审计\n- API Token: 定期轮换，有效期 <= 90天\n\n## 变更管理\n- 变更分级: 标准变更(低风险)、紧急变更(中风险)、重大变更(高风险)\n- 审批流程: 高风险变更需至少2人审批\n- 变更窗口: 非核心业务 02:00-06:00\n- 回滚方案: 每次变更必须有可执行回滚方案\n\n## 合规要求\n- 日志保留 >= 180天\n- 操作审计: 所有生产操作记录 actor/action/target/timestamp\n- 敏感数据: 禁止在日志中输出密码/Token/密钥",
+    "tags": [
+      "security",
+      "compliance",
+      "access-control",
+      "change-management"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-error-codes",
+    "title": "常见错误码对照表",
+    "source": "runbook/error_codes.md",
+    "content": "## HTTP 错误码\n- 400 Bad Request: 请求参数格式错误\n- 401 Unauthorized: 认证失败\n- 403 Forbidden (ERR_403_AUTH): 权限不足\n- 404 Not Found: 资源不存在\n- 429 Too Many Requests: 请求频率超限\n- 500 Internal Server Error: 服务器内部错误\n- 502 Bad Gateway: 上游服务不可达\n- 503 Service Unavailable: 服务过载或维护\n- 504 Gateway Timeout: 上游响应超时\n\n## 系统错误码\n- EMFILE: 文件描述符耗尽，调整 ulimit -n\n- OOM_KILLED: 内存不足被 OOM Killer 终止\n- SIGSEGV: 段错误，检查空指针或内存越界\n- ERR_CONNECTION_REFUSED: 目标端口未监听\n- ERR_CONNECTION_TIMEOUT: 连接超时\n- ERR_SSL_PROTOCOL_ERROR: SSL/TLS 协议错误\n- ERR_CERT_EXPIRED: 证书过期\n\n## 应用错误码\n- ERROR-DB-104: 数据库连接池耗尽\n- ERROR-DB-105: 数据库死锁检测\n- ERROR-CACHE-201: 缓存穿透\n- ERROR-CACHE-202: 缓存雪崩\n- ERROR-QUEUE-301: 消息队列积压\n- ERROR-AUTH-401: Token 过期",
+    "tags": [
+      "error-codes",
+      "HTTP",
+      "system",
+      "application",
+      "reference"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-407d2f98",
+    "title": "ERROR-DB-104 数据库连接池耗尽处理",
+    "source": "manual/db-104",
+    "content": "ERROR-DB-104 表示数据库连接池耗尽。检查连接池配置、慢查询、最大连接数和网络延迟。",
+    "tags": [
+      "database",
+      "connection-pool"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-77339c7d",
+    "title": "Nginx 502 网关错误排查",
+    "source": "manual/nginx_502.md",
+    "content": "Nginx 502 通常与上游服务不可达、连接超时或反向代理配置错误有关。排查Nginx 502上游不可达方法包括检查PHP-FPM状态和端口监听。",
+    "tags": [
+      "nginx",
+      "502"
+    ],
+    "score": 0.0
+  },
+  {
+    "doc_id": "kb-91812b07",
+    "title": "nginx_502.md#1",
+    "source": "data/knowledge/nginx_502.md",
+    "content": "# Nginx 502 Bad Gateway 排查手册\n\n## 现象\n客户端收到 HTTP 502 Bad Gateway 错误。\n\n## 常见原因\n1. 上游服务（如 PHP-FPM、uWSGI、Gunicorn）未启动或已崩溃\n2. 上游服务响应超时（proxy_read_timeout 过短）\n3. 上游服务返回了无效响应\n4. 网络问题导致 Nginx 无法连接上游\n\n## 排查步骤\n1. `systemctl status php-fpm` 确认上游服务状态\n2. `tail -f /var/log/nginx/error.log` 查看 Nginx 错误日志\n3. `ss -tlnp | grep :9000` 确认上游端口监听\n4. `curl -v http://127.0.0.1:9000` 直接测试上游连通性\n\n## 处置方法\n1. 重启上游服务：`systemctl restart php-fpm`\n2. 调整 Nginx 超时配置：`proxy_read_timeout 60s`\n3. 检查上游服务资源限制（max_children、内存等）\n4. 临时降级：返回静态维护页面",
+    "tags": [
+      "md",
+      "bulk-import"
+    ],
+    "score": 0.0
+  }
+]

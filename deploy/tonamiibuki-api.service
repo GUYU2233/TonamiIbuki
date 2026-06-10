@@ -1,0 +1,14 @@
+[Unit]
+Description=TonamiIbuki Enterprise IT AIOps API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/TonamiIbuki
+ExecStart=/usr/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
